@@ -10,7 +10,7 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import System.Directory (getAppUserDataDirectory)
-import Control.Monad.State (StateT)
+import Control.Monad.State (StateT, evalStateT)
 import Control.Monad.State.Class (MonadState(get, put))
 import Control.Applicative ((<$>), (<*>), pure, optional)
 import Options.Applicative
@@ -33,8 +33,9 @@ newtype BooksM a = BM { runBM :: StateT BookList IO a }
 
 instance MonadBooks BooksM
 
+-- FIXME
 runBooks :: BooksM a -> IO a
-runBooks = undefined -- TODO use a proper monad
+runBooks b = evalStateT (runBM b) (BookList [] [])
 
 -- | Query the given list of books for a book that matches the given search
 -- criteria.
@@ -95,8 +96,9 @@ list = do
         mapM_ (putLn . format) reading
         putLn ""
 
-    putLn "To be read:"
-    mapM_ (putLn . format) toBeRead
+    when (length toBeRead > 0) $ do
+        putLn "To be read:"
+        mapM_ (putLn . format) toBeRead
 
   where nats = 1:map (+1) nats
 
@@ -205,32 +207,16 @@ str = return . T.pack
 
 -- | Dispatch the correct subcommand based on the options.
 dispatch :: Argument -> IO ()
-dispatch args = do
-  putStrLn $ unwords ["Using file", argFile args]
+dispatch args = runBooks $ -- TODO change to add loading and saving of argFile
   case argCommand args of
-    Add{..}    -> runBooks $ add addTitle addAuthor
-    Finish{..} -> runBooks $ maybe finishNoQuery finishWithQuery finishQuery
-    List       -> runBooks   list
-    Pick{..}   -> runBooks $ pick pickQuery
-    Remove{..} -> runBooks $ remove removeQuery
-    Status     -> runBooks   status
-    Stop{..}   -> runBooks $ maybe stopNoQuery stopWithQuery stopQuery
+    Add{..}    -> add addTitle addAuthor
+    Finish{..} -> maybe finishNoQuery finishWithQuery finishQuery
+    List       -> list
+    Pick{..}   -> pick pickQuery
+    Remove{..} -> remove removeQuery
+    Status     -> status
+    Stop{..}   -> maybe stopNoQuery stopWithQuery stopQuery
         
-
-        
-{-
-  putStrLn $ unwords ["Using file", argFile args]
-  case argCommand args of
-    Add{..} ->
-        putStrLn $ unwords ["Adding", addTitle, "by", addAuthor]
-    Remove{..} ->
-        putStrLn $ unwords ["Removing", removeTitle, "by", removeAuthor]
-    List ->
-        putStrLn "Listing all books."
-    Pick ->
-        putStrLn "Picking a book at random."
--}
-
 -- | Represents the subcommands offered by the program.
 data Command = Add { addTitle :: Text
                    , addAuthor  :: Text }

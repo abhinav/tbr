@@ -25,11 +25,11 @@ data BookList = BookList { blReading  :: [Book]
                          , blToBeRead :: [Book] }
   deriving (Show, Eq)
 
-class (Functor m, Monad m, MonadState BookList m, MonadIO m) => MonadBooks m
-
+class (Monad m, MonadState BookList m, MonadIO m) => MonadBooks m
 
 newtype BooksM a = BM { runBM :: StateT BookList IO a }
-    deriving (Functor, Monad, MonadState BookList, MonadIO)
+  deriving (Monad, MonadState BookList, MonadIO)
+
 
 instance MonadBooks BooksM
 

@@ -5,9 +5,11 @@ module Main (main) where
 import Data.Text (Text)
 import Data.Monoid ((<>))
 import Control.Monad (when)
+import Data.List (isInfixOf)
 import System.FilePath ((</>))
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+import Data.Char (isAlphaNum, isSpace)
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import System.Directory (getAppUserDataDirectory)
 import Control.Monad.State (StateT, evalStateT)
@@ -40,7 +42,14 @@ runBooks b = evalStateT (runBM b) (BookList [] [])
 -- | Query the given list of books for a book that matches the given search
 -- criteria.
 query :: [Book] -> Text -> [Book]
-query = undefined -- TODO
+query bs q = filter matchBook bs
+  where clean   t = T.toLower (T.filter isValid t)
+        isValid   = (||) <$> isSpace <*> isAlphaNum
+        split   s = T.split isSpace s
+        qTokens   = split (clean q)
+        matches s = qTokens `isInfixOf` split (clean s)
+        matchBook = (||) <$> matches . bookTitle
+                         <*> matches . bookAuthor
 
 putLn :: MonadIO m => Text -> m ()
 putLn = liftIO . TIO.putStrLn

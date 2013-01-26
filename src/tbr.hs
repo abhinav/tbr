@@ -60,9 +60,13 @@ show_ = T.pack . show
 status :: MonadBooks m => m ()
 status = do
     BookList{..} <- get
-    when (length blReading > 0) $ do
-        putLn "Reading:"
-        printBookList blReading
+    case blReading of
+        []  -> return ()
+        [b] ->
+            putLn $ "Reading " <> formatBookNice b
+        bs  ->  do
+            putLn "Reading:"
+            printBookList bs
     putLn $ "There are " <> show_ (length blToBeRead)
                          <> " books to be read."
 

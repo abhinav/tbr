@@ -93,6 +93,34 @@ finishWithQuery q = do -- TODO abstract away query checking
             putLn "Can you be more specific. That query matches:"
             mapM_ (putLn . formatBookNice) bs
 
+search :: MonadBooks m => Text -> m ()
+search q = do
+    BookList{..} <- get
+    let reading  = zip nats (query blReading  q)
+        toBeRead = zip nats (query blToBeRead q)
+
+        readCount = length reading
+        tbrCount  = length toBeRead
+
+    when (readCount > 0) $ do
+        putLn "Reading:"
+        mapM_ (putLn . format) reading
+        putLn ""
+
+    when (tbrCount > 0) $ do
+        putLn "To be read:"
+        mapM_ (putLn . format) toBeRead
+
+    when ((readCount, tbrCount) == (0, 0)) $ do
+        putLn "No such books found."
+
+  where nats = 1:map (+1) nats
+
+        format :: (Integer, Book) -> Text
+        format (i, Book{..}) = show_ i <> ". "  <> bookAuthor
+                                       <> " - " <> bookTitle
+
+
 list :: MonadBooks m => m ()
 list = do
     BookList{..} <- get
@@ -113,7 +141,7 @@ list = do
 
         format :: (Integer, Book) -> Text
         format (i, Book{..}) = show_ i <> ". "  <> bookAuthor
-                                      <> " - " <> bookTitle
+                                       <> " - " <> bookTitle
 
 pick :: MonadBooks m => Text -> m ()
 pick q = do
@@ -223,6 +251,7 @@ dispatch args = runBooks $ -- TODO change to add loading and saving of argFile
     List       -> list
     Pick{..}   -> pick pickQuery
     Remove{..} -> remove removeQuery
+    Search{..} -> search searchQuery
     Status     -> status
     Stop{..}   -> maybe stopNoQuery stopWithQuery stopQuery
         
@@ -233,6 +262,7 @@ data Command = Add { addTitle :: Text
              | List
              | Pick   { pickQuery   :: Text }
              | Remove { removeQuery :: Text }
+             | Search { searchQuery :: Text }
              | Status 
              | Stop   { stopQuery   :: Maybe Text }
 
@@ -241,21 +271,16 @@ data Argument = Argument { argFile    :: FilePath
                          , argCommand :: Command
                          }
 
-addParser :: Parser Command
-addParser = Add <$> argument str (metavar "TITLE")
-                <*> argument str (metavar "AUTHOR")
+addParser, finishParser, stopParser, pickParser, removeParser, searchParser
+    :: Parser Command
 
-finishParser :: Parser Command
+addParser    = Add    <$> argument str (metavar "TITLE")
+                      <*> argument str (metavar "AUTHOR")
 finishParser = Finish <$> optional (argument str (metavar "QUERY"))
-
-stopParser :: Parser Command
 stopParser   = Stop   <$> optional (argument str (metavar "QUERY"))
-
-pickParser :: Parser Command
 pickParser   = Pick   <$> argument str (metavar "QUERY")
-
-removeParser :: Parser Command
 removeParser = Remove <$> argument str (metavar "QUERY")
+searchParser = Search <$> argument str (metavar "QUERY")
 
 -- | Parser for all subcommands.
 commandParser :: Parser Command
@@ -265,6 +290,7 @@ commandParser = subparser $
  <> command "list"   (info (pure List)   $ progDesc "List all books to be read.")
  <> command "pick"   (info pickParser    $ progDesc "Start reading a book.")
  <> command "remove" (info removeParser  $ progDesc "Remove a book.")
+ <> command "search" (info searchParser  $ progDesc "Search for a book in the list.")
  <> command "status" (info (pure Status) $ progDesc "Show reading status.")
  <> command "stop"   (info stopParser    $ progDesc "Stop reading a book.")
 

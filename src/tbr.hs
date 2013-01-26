@@ -62,7 +62,7 @@ status = do
     BookList{..} <- get
     when (length blReading > 0) $ do
         putLn "Reading:"
-        mapM_ (putLn . formatBookNice) blReading
+        printBookList blReading
     putLn $ "There are " <> show_ (length blToBeRead)
                          <> " books to be read."
 
@@ -79,7 +79,7 @@ finishNoQuery = do
             putLn $ "Finished reading " <> formatBookNice b
         bs -> do
             putLn "Can you be more specific. You are reading:"
-            mapM_ (putLn . formatBookNice) bs
+            printBookList bs
 
 finishWithQuery :: MonadBooks m => Text -> m ()
 finishWithQuery q = do -- TODO abstract away query checking
@@ -91,57 +91,53 @@ finishWithQuery q = do -- TODO abstract away query checking
             putLn $ "Finished reading " <> formatBookNice b
         bs -> do
             putLn "Can you be more specific. That query matches:"
-            mapM_ (putLn . formatBookNice) bs
+            printBookList bs
 
 search :: MonadBooks m => Text -> m ()
 search q = do
     BookList{..} <- get
-    let reading  = zip nats (query blReading  q)
-        toBeRead = zip nats (query blToBeRead q)
+    let reading  = query blReading  q
+        toBeRead = query blToBeRead q
 
         readCount = length reading
         tbrCount  = length toBeRead
 
     when (readCount > 0) $ do
         putLn "Reading:"
-        mapM_ (putLn . format) reading
-        putLn ""
+        printBookList reading
 
     when (tbrCount > 0) $ do
         putLn "To be read:"
-        mapM_ (putLn . format) toBeRead
+        printBookList toBeRead
 
     when ((readCount, tbrCount) == (0, 0)) $ do
         putLn "No such books found."
-
-  where nats = 1:map (+1) nats
-
-        format :: (Integer, Book) -> Text
-        format (i, Book{..}) = show_ i <> ". "  <> bookAuthor
-                                       <> " - " <> bookTitle
-
 
 list :: MonadBooks m => m ()
 list = do
     BookList{..} <- get
 
-    let toBeRead = zip nats blToBeRead
-        reading  = zip nats blReading
-
-    when (length reading > 0) $ do
+    when (length blReading > 0) $ do
         putLn "Reading:"
-        mapM_ (putLn . format) reading
+        printBookList blReading
         putLn ""
 
-    when (length toBeRead > 0) $ do
+    when (length blToBeRead > 0) $ do
         putLn "To be read:"
-        mapM_ (putLn . format) toBeRead
+        printBookList blToBeRead
 
+printBookList :: (MonadIO m) => [Book] -> m ()
+printBookList bs = liftIO $ mapM_ TIO.putStrLn (formatBookList bs)
+
+formatBookList :: [Book] -> [Text]
+formatBookList bs = map format pairs
   where nats = 1:map (+1) nats
-
-        format :: (Integer, Book) -> Text
-        format (i, Book{..}) = show_ i <> ". "  <> bookAuthor
-                                       <> " - " <> bookTitle
+        pairs = zip nats bs
+        numLength = length . show
+        maxNumLength =  numLength (length bs)
+        format (i, Book{..}) = show_ i <> ". " <> extraSpaces <> bookAuthor
+                                       <> " - "  <> bookTitle
+          where extraSpaces = T.replicate (maxNumLength - numLength i) " "
 
 pick :: MonadBooks m => Text -> m ()
 pick q = do
@@ -154,7 +150,7 @@ pick q = do
             putLn $ "Finished reading " <> formatBookNice b
         bs -> do
             putLn "Can you be more specific. That query matches:"
-            mapM_ (putLn . formatBookNice) bs
+            printBookList bs
 
 add :: MonadBooks m => Text -> Text -> m ()
 add title author = do
@@ -173,7 +169,7 @@ remove q = do
             putLn $ "Removed " <> formatBookNice b <> " from the reading list."
         bs -> do
             putLn "Can you be more specific. That query matches:"
-            mapM_ (putLn . formatBookNice) bs
+            printBookList bs
 
 stopNoQuery :: MonadBooks m => m ()
 stopNoQuery = do
@@ -186,7 +182,7 @@ stopNoQuery = do
             putLn $ "Stopped reading " <> formatBookNice b
         bs -> do
             putLn "Can you be more specific. You are reading:"
-            mapM_ (putLn . formatBookNice) bs
+            printBookList bs
 
 stopWithQuery :: MonadBooks m => Text -> m ()
 stopWithQuery q = do
@@ -199,7 +195,7 @@ stopWithQuery q = do
             putLn $ "Stopped reading " <> formatBookNice b
         bs -> do
             putLn "Can you be more specific. That query matches:"
-            mapM_ (putLn . formatBookNice) bs
+            printBookList bs
 
 -- Interaction mockup:
 --

@@ -37,7 +37,60 @@ instance MonadBooks BooksM
 
 -- FIXME
 runBooks :: BooksM a -> IO a
-runBooks b = evalStateT (runBM b) (BookList [] [])
+runBooks b = evalStateT (runBM b) dummyBookList
+
+dummyBookList = BookList
+    [ Book "Terry Pratchett" "Sourcery (Discworld)" ]
+    [ Book "Alexandre Dumas" "The Count of Monte Cristo"
+    , Book "Arthur Conan Doyle" "The Adventures of Shelock Holmes"
+    , Book "Brian K. Vaughan" "Y: The Last Man, Vol. 3: One Small Step"
+    , Book "Christopher Moore" "Practical Demonkeeping"
+    , Book "Dan Simmons" "Hyperion"
+    , Book "Daniel Keyes" "Flowers for Algernon"
+    , Book "David Foster Wallace" "Infinite Jest"
+    , Book "David Wong" "John Dies at the End"
+    , Book "Ed Brubaker" "Batman: The Man Who Laughs"
+    , Book "Ernest Cline" "Ready Player One"
+    , Book "Fyodor Dostoyevsky" "The Brothers Karamazov"
+    , Book "Gregory David Roberts" "Shantaram"
+    , Book "Herman Melville" "Moby-Dick"
+    , Book "H. G. Wells" "The Time Machine"
+    , Book "Hugh Howey" "Wool: Proper Gauge (Silo Series)"
+    , Book "Iain M. Banks" "Consider Phlebas (Culture series)"
+    , Book "Jasper Fforde" "The Eyre Affair (Thursday Next)"
+    , Book "J. D. Salinger" "The Catcher in the Rye"
+    , Book "Jim Butcher" "Storm Front (The Dresden Files)"
+    , Book "Julian Barnes" "The Sense of an Ending"
+    , Book "Joseph Conrad" "Heart of Darkness"
+    , Book "Joseph Heller" "Catch-22"
+    , Book "Kevin Hearne" "Hammered: The Iron Druid Chronicles, Book 3"
+    , Book "Lawrence M. Krauss" "The Physics of Star Trek"
+    , Book "Mark Z. Danielewski" "House of Leaves"
+    , Book "Mary Shelley" "Frankenstein"
+    , Book "Michael J. Sullivan" "Theft of Swords (Riyria Revelations)"
+    , Book "Michael Pollan" "The Omnivore's Dilemma"
+    , Book "Miguel De Cervantes" "Don Quixote"
+    , Book "Octavia E. Butler" "Lilith's Brood"
+    , Book "Orson Scott Card" "Xenocide"
+    , Book "Paul Graham" "Hackers and Painters"
+    , Book "Ray Bradbury" "Fahrenheit 451"
+    , Book "Robert A. Heinlein" "Stranger in a Strange Land"
+    , Book "Robert Jordan" "The Eye of the World (The Wheel of Time)"
+    , Book "Scott Lynch" "The Lies of Locke Lamora"
+    , Book "Seamus Heaney edition" "Beowulf"
+    , Book "Stanislaw Lem" "Return From The Stars"
+    , Book "Stephen King" "The Gunslinger"
+    , Book "Steven Lovett" "Freakonomics"
+    , Book "Ted Chiang" "Stories of Your Life and Others"
+    , Book "Tim O'Brien" "The Things They Carried"
+    , Book "William Gibson" "Neuromancer"
+    , Book "F. Scott Fitzgerald" "The Great Gatsby"
+    , Book "Homer" "Odyssey"
+    , Book "Mikhail Bulgakov" "The Master and Margarita"
+    , Book "Ray Bradbury" "The Martian Chronicles"
+    , Book "Roger Zelazny" "Lord of Light"
+    , Book "Robert A. Heinlein" "The Moon Is a Harsh Mistress"
+    ]
 
 -- | Query the given list of books for a book that matches the given search
 -- criteria.

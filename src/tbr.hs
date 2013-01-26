@@ -1,96 +1,83 @@
 {-# LANGUAGE RecordWildCards, OverloadedStrings, FlexibleContexts,
-             GeneralizedNewtypeDeriving #-}
+             GeneralizedNewtypeDeriving, DeriveGeneric, MultiParamTypeClasses #-}
 module Main (main) where
 
 import Data.Text (Text)
 import Data.Monoid ((<>))
 import Control.Monad (when)
+import Data.Maybe (fromJust)
 import Data.List (isInfixOf)
-import System.FilePath ((</>))
+import GHC.Generics (Generic)
+import System.FilePath ((</>), takeDirectory)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Data.Char (isAlphaNum, isSpace)
+import Control.Error (runEitherT, tryIO)
+import qualified Data.ByteString.Lazy as BSL
 import Control.Monad.IO.Class (MonadIO(liftIO))
-import System.Directory (getAppUserDataDirectory)
-import Control.Monad.State (StateT, evalStateT)
+import Control.Monad.Reader (ReaderT, runReaderT)
+import Control.Monad.Reader.Class (MonadReader(ask))
+import Data.Aeson (FromJSON, ToJSON, encode, decode)
 import Control.Monad.State.Class (MonadState(get, put))
 import Control.Applicative ((<$>), (<*>), pure, optional)
+import System.Directory (getAppUserDataDirectory, createDirectoryIfMissing)
 import Options.Applicative
     (Parser, argument, metavar, long, short, strOption, help, value,
      subparser, command, info, progDesc, execParser, helper, fullDesc, header)
 
+
 data Book = Book { bookAuthor :: Text
                  , bookTitle  :: Text }
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
+instance ToJSON Book
+instance FromJSON Book
 
 data BookList = BookList { blReading  :: [Book]
                          , blToBeRead :: [Book] }
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
+instance ToJSON BookList
+instance FromJSON BookList
 
 class (Monad m, MonadState BookList m, MonadIO m) => MonadBooks m
 
-newtype BooksM a = BM { runBM :: StateT BookList IO a }
-  deriving (Monad, MonadState BookList, MonadIO)
+newtype BooksM a = BM { runBM :: ReaderT Argument IO a }
+  deriving (Monad, MonadReader Argument, MonadIO)
 
+getBookList :: BooksM BookList
+getBookList = do
+   Argument{argFile = path} <- ask
+   -- TODO handle errors
+   bl' <- runEitherT (tryIO $ readBookList path)
+   case bl' of
+      Left _ -> do
+        putLn "No book list found. A new one will be created."
+        return (BookList [] [])
+      Right bl -> return bl
+
+setBookList :: BookList -> BooksM ()
+setBookList bl = do
+   Argument{argFile = path} <- ask
+   liftIO (createDirectoryIfMissing True $ takeDirectory path)
+   res <- runEitherT (tryIO $ writeBookList path bl)
+   case res of
+      Left e -> fail (show e)
+      Right () -> return ()
+
+instance MonadState BookList BooksM where
+    get = getBookList
+    put = setBookList
 
 instance MonadBooks BooksM
 
 -- FIXME
-runBooks :: BooksM a -> IO a
-runBooks b = evalStateT (runBM b) dummyBookList
+runBooks :: Argument -> BooksM a -> IO a
+runBooks args b = runReaderT (runBM b) args
 
-dummyBookList = BookList
-    [ Book "Terry Pratchett" "Sourcery (Discworld)" ]
-    [ Book "Alexandre Dumas" "The Count of Monte Cristo"
-    , Book "Arthur Conan Doyle" "The Adventures of Shelock Holmes"
-    , Book "Brian K. Vaughan" "Y: The Last Man, Vol. 3: One Small Step"
-    , Book "Christopher Moore" "Practical Demonkeeping"
-    , Book "Dan Simmons" "Hyperion"
-    , Book "Daniel Keyes" "Flowers for Algernon"
-    , Book "David Foster Wallace" "Infinite Jest"
-    , Book "David Wong" "John Dies at the End"
-    , Book "Ed Brubaker" "Batman: The Man Who Laughs"
-    , Book "Ernest Cline" "Ready Player One"
-    , Book "Fyodor Dostoyevsky" "The Brothers Karamazov"
-    , Book "Gregory David Roberts" "Shantaram"
-    , Book "Herman Melville" "Moby-Dick"
-    , Book "H. G. Wells" "The Time Machine"
-    , Book "Hugh Howey" "Wool: Proper Gauge (Silo Series)"
-    , Book "Iain M. Banks" "Consider Phlebas (Culture series)"
-    , Book "Jasper Fforde" "The Eyre Affair (Thursday Next)"
-    , Book "J. D. Salinger" "The Catcher in the Rye"
-    , Book "Jim Butcher" "Storm Front (The Dresden Files)"
-    , Book "Julian Barnes" "The Sense of an Ending"
-    , Book "Joseph Conrad" "Heart of Darkness"
-    , Book "Joseph Heller" "Catch-22"
-    , Book "Kevin Hearne" "Hammered: The Iron Druid Chronicles, Book 3"
-    , Book "Lawrence M. Krauss" "The Physics of Star Trek"
-    , Book "Mark Z. Danielewski" "House of Leaves"
-    , Book "Mary Shelley" "Frankenstein"
-    , Book "Michael J. Sullivan" "Theft of Swords (Riyria Revelations)"
-    , Book "Michael Pollan" "The Omnivore's Dilemma"
-    , Book "Miguel De Cervantes" "Don Quixote"
-    , Book "Octavia E. Butler" "Lilith's Brood"
-    , Book "Orson Scott Card" "Xenocide"
-    , Book "Paul Graham" "Hackers and Painters"
-    , Book "Ray Bradbury" "Fahrenheit 451"
-    , Book "Robert A. Heinlein" "Stranger in a Strange Land"
-    , Book "Robert Jordan" "The Eye of the World (The Wheel of Time)"
-    , Book "Scott Lynch" "The Lies of Locke Lamora"
-    , Book "Seamus Heaney edition" "Beowulf"
-    , Book "Stanislaw Lem" "Return From The Stars"
-    , Book "Stephen King" "The Gunslinger"
-    , Book "Steven Lovett" "Freakonomics"
-    , Book "Ted Chiang" "Stories of Your Life and Others"
-    , Book "Tim O'Brien" "The Things They Carried"
-    , Book "William Gibson" "Neuromancer"
-    , Book "F. Scott Fitzgerald" "The Great Gatsby"
-    , Book "Homer" "Odyssey"
-    , Book "Mikhail Bulgakov" "The Master and Margarita"
-    , Book "Ray Bradbury" "The Martian Chronicles"
-    , Book "Roger Zelazny" "Lord of Light"
-    , Book "Robert A. Heinlein" "The Moon Is a Harsh Mistress"
-    ]
+readBookList :: FilePath -> IO BookList
+readBookList path = fromJust . decode <$> BSL.readFile path
+
+writeBookList :: FilePath -> BookList -> IO ()
+writeBookList path bl = BSL.writeFile path (encode bl)
 
 -- | Query the given list of books for a book that matches the given search
 -- criteria.
@@ -196,6 +183,9 @@ formatBookList bs = map format pairs
                                        <> " - "  <> bookTitle
           where extraSpaces = T.replicate (maxNumLength - numLength i) " "
 
+-- TODO fix the following error:
+-- tbr: user error (/Users/abhinav/.tbr/tbr.txt: openBinaryFile: resource busy
+-- (file is locked))
 pick :: MonadBooks m => Text -> m ()
 pick q = do
     bl@(BookList{..}) <- get
@@ -297,7 +287,7 @@ str = return . T.pack
 
 -- | Dispatch the correct subcommand based on the options.
 dispatch :: Argument -> IO ()
-dispatch args = runBooks $ -- TODO change to add loading and saving of argFile
+dispatch args = runBooks args $ -- TODO change to add loading and saving of argFile
   case argCommand args of
     Add{..}    -> add addTitle addAuthor
     Finish{..} -> maybe finishNoQuery finishWithQuery finishQuery

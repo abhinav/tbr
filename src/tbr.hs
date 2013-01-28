@@ -9,20 +9,18 @@ import Control.Monad (when)
 import Data.Maybe (fromJust)
 import Data.List (isInfixOf)
 import GHC.Generics (Generic)
-import System.FilePath ((</>), takeDirectory)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Data.Char (isAlphaNum, isSpace)
-import Control.Error (runEitherT, tryIO)
 import qualified Data.ByteString.Lazy as BSL
+import System.FilePath ((</>), takeDirectory)
+import Control.Monad.State.Class (MonadState)
+import Control.Monad.State (StateT, runStateT)
 import Control.Monad.IO.Class (MonadIO(liftIO))
-import Control.Monad.Reader (ReaderT, runReaderT)
-import Control.Monad.Reader.Class (MonadReader(ask))
 import Data.Aeson (FromJSON, ToJSON, encode, decode)
-import Control.Monad.State.Class (MonadState(get, put))
 import Control.Applicative ((<$>), (<*>), pure, optional)
 import System.Directory (getAppUserDataDirectory, createDirectoryIfMissing)
-import Control.Lens (makeLenses, (<>=), (.=), use, (%=), uses, to, (^.), views)
+import Control.Lens (makeLenses, (<>=), (.=), use, (%=), uses, (^.), views)
 import Options.Applicative
     (Parser, argument, metavar, long, short, strOption, help, value,
      subparser, command, info, progDesc, execParser, helper, fullDesc, header)
@@ -45,44 +43,27 @@ makeLenses ''BookList
 
 class (Monad m, MonadState BookList m, MonadIO m) => MonadBooks m
 
-newtype BooksM a = BM { runBM :: ReaderT Argument IO a }
-  deriving (Monad, MonadReader Argument, MonadIO)
-
-getBookList :: BooksM BookList
-getBookList = do
-   Argument{argFile = path} <- ask
-   -- TODO handle errors
-   bl' <- runEitherT (tryIO $ readBookList path)
-   case bl' of
-      Left _ -> do
-        putLn "No book list found. A new one will be created."
-        return (BookList [] [])
-      Right bl -> return bl
-
-setBookList :: BookList -> BooksM ()
-setBookList bl = do
-   Argument{argFile = path} <- ask
-   liftIO (createDirectoryIfMissing True $ takeDirectory path)
-   res <- runEitherT (tryIO $ writeBookList path bl)
-   case res of
-      Left e -> fail (show e)
-      Right () -> return ()
-
-instance MonadState BookList BooksM where
-    get = getBookList
-    put = setBookList
+newtype BooksM a = BM { runBM :: StateT BookList IO a }
+  deriving (Monad, MonadState BookList, MonadIO)
 
 instance MonadBooks BooksM
 
 -- FIXME
-runBooks :: Argument -> BooksM a -> IO a
-runBooks args b = runReaderT (runBM b) args
+runBooks :: FilePath -> BooksM a -> IO a
+runBooks path b = do
+    bookList <- readBookList path
+    (a, bookList') <- runStateT (runBM b) bookList
+    when (bookList /= bookList') $
+        writeBookList path bookList'
+    return a
 
 readBookList :: FilePath -> IO BookList
 readBookList path = fromJust . decode <$> BSL.readFile path
 
 writeBookList :: FilePath -> BookList -> IO ()
-writeBookList path bl = BSL.writeFile path (encode bl)
+writeBookList path bl = do
+    createDirectoryIfMissing True (takeDirectory path)
+    BSL.writeFile path (encode bl)
 
 -- | Query the given list of books for a book that matches the given search
 -- criteria.
@@ -295,7 +276,7 @@ str = return . T.pack
 
 -- | Dispatch the correct subcommand based on the options.
 dispatch :: Argument -> IO ()
-dispatch args = runBooks args $ -- TODO change to add loading and saving of argFile
+dispatch args = runBooks (argFile args) $
   case argCommand args of
     Add{..}    -> add addTitle addAuthor
     Finish{..} -> maybe finishNoQuery finishWithQuery finishQuery

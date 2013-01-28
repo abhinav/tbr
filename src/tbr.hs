@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards, OverloadedStrings, FlexibleContexts,
              GeneralizedNewtypeDeriving, DeriveGeneric, MultiParamTypeClasses,
-             TemplateHaskell #-}
+             TemplateHaskell, Rank2Types #-}
 module Main (main) where
 
 import Data.Text (Text)
@@ -21,47 +21,52 @@ import Control.Monad.IO.Class (MonadIO(liftIO))
 import Data.Aeson (FromJSON, ToJSON, encode, decode)
 import Control.Applicative ((<$>), (<*>), pure, optional)
 import System.Directory (getAppUserDataDirectory, createDirectoryIfMissing)
-import Control.Lens (makeLenses, (<>=), (.=), use, (%=), uses, (^.), views)
+import Control.Lens (makeLenses, (<>=), (.=), use, (%=), uses, (^.), views, Lens')
 import Options.Applicative
     (Parser, argument, metavar, long, short, strOption, help, value,
      subparser, command, info, progDesc, execParser, helper, fullDesc, header)
 
+-- | Represents a Book.
 data Book = Book { _bookAuthor :: Text
                  , _bookTitle  :: Text }
   deriving (Show, Eq, Generic)
+makeLenses ''Book
 instance ToJSON Book
 instance FromJSON Book
 
-makeLenses ''Book
-
+-- | Represents the complete reading list. Contains both, the books that are
+-- to be read and that are being read.
 data BookList = BookList { _blReading  :: [Book]
                          , _blToBeRead :: [Book] }
   deriving (Show, Eq, Generic)
+makeLenses ''BookList
 instance ToJSON BookList
 instance FromJSON BookList
 
-makeLenses ''BookList
-
+-- | Commands in the program run in a monad that conforms to this class.
 class (Monad m, MonadState BookList m, MonadIO m) => MonadBooks m
 
+-- | The BooksM monad allows access to the @BookList@.
 newtype BooksM a = BM { runBM :: StateT BookList IO a }
   deriving (Monad, MonadState BookList, MonadIO)
-
 instance MonadBooks BooksM
 
--- FIXME
-runBooks :: FilePath -> BooksM a -> IO a
-runBooks path b = do
+-- | Execute the @BooksM@ monad.
+runBooksM :: FilePath -> BooksM a -> IO a
+runBooksM path b = do
+    -- TODO Error handling
     bookList <- readBookList path
     (a, bookList') <- runStateT (runBM b) bookList
     when (bookList /= bookList') $
         writeBookList path bookList'
     return a
 
+-- | Read the given file and deserialize the book list.
 readBookList :: FilePath -> IO BookList
 readBookList path =
     fromJust . decode . BSL.fromChunks . (:[]) <$> BS.readFile path
 
+-- | Serialize and write the given book list to the path.
 writeBookList :: FilePath -> BookList -> IO ()
 writeBookList path bl = do
     createDirectoryIfMissing True (takeDirectory path)
@@ -69,8 +74,8 @@ writeBookList path bl = do
 
 -- | Query the given list of books for a book that matches the given search
 -- criteria.
-query :: [Book] -> Text -> [Book]
-query bs q = filter matchBook bs
+query' :: [Book] -> Text -> [Book]
+query' bs q = filter matchBook bs
   where clean   t = T.toLower (T.filter isValid t)
         isValid   = (||) <$> isSpace <*> isAlphaNum
         split   s = T.split isSpace s
@@ -79,11 +84,22 @@ query bs q = filter matchBook bs
         matchBook = (||) <$> views bookTitle  matches
                          <*> views bookAuthor matches
 
+-- | @query'@ that runs inside a Monad that contains the BookList. The first
+-- argument is a lens over the BookList that chooses which list of books
+-- (to-be-read or reading) is to be queried.
+query :: (MonadState BookList m) => Lens' BookList [Book] -> Text -> m [Book]
+query l q = uses l (`query'` q)
+
+-- | A version of @Data.Text.IO.putStrLn@ that runs in any monad capable of
+-- lifting IO operations.
 putLn :: MonadIO m => Text -> m ()
 putLn = liftIO . TIO.putStrLn
 
+-- | A version of @show@ that returns @Text@ instead of @String@s.
 show_ :: Show a => a -> Text
 show_ = T.pack . show
+
+-- START COMMANDS:
 
 status :: MonadBooks m => m ()
 status = do
@@ -115,8 +131,8 @@ finishNoQuery = do
 
 finishWithQuery :: MonadBooks m => Text -> m ()
 finishWithQuery q = do -- TODO abstract away query checking
-    reading <- use blReading
-    case (query reading q) of
+    result <- query blReading q
+    case result of
         [] -> putLn "Could not find such a book."
         [b] -> do
             blReading %= filter (/= b)
@@ -127,8 +143,8 @@ finishWithQuery q = do -- TODO abstract away query checking
 
 search :: MonadBooks m => Text -> m ()
 search q = do
-    reading  <- uses blReading  queryList
-    toBeRead <- uses blToBeRead queryList
+    reading  <- query blReading  q
+    toBeRead <- query blToBeRead q
 
     let readCount = length reading
         tbrCount  = length toBeRead
@@ -143,8 +159,6 @@ search q = do
 
     when ((readCount, tbrCount) == (0, 0)) $ do
         putLn "No such books found."
-
-  where queryList l = query l q
 
 list :: MonadBooks m => m ()
 list = do
@@ -180,8 +194,8 @@ formatBookList bs = map format pairs
 -- (file is locked))
 pick :: MonadBooks m => Text -> m ()
 pick q = do
-    toBeRead <- use blToBeRead
-    case query toBeRead q of
+    result <- query blToBeRead q
+    case result of
         [] -> putLn "Could not find such a book."
         [b] -> do
             blReading  <>= [b]
@@ -199,8 +213,8 @@ add title author = do
 
 remove :: MonadBooks m => Text -> m ()
 remove q = do
-    toBeRead <- use blToBeRead
-    case query toBeRead q of
+    result <- query blToBeRead q
+    case result of
         [] -> putLn "Could not find such a book."
         [b] -> do
             blToBeRead %= filter (/= b)
@@ -224,8 +238,8 @@ stopNoQuery = do
 
 stopWithQuery :: MonadBooks m => Text -> m ()
 stopWithQuery q = do
-    reading <- use blReading
-    case query reading q of
+    result <- query blReading q
+    case result of
         [] -> putLn "Could not find such a book."
         [b] -> do
             blReading %= filter (/= b)
@@ -278,7 +292,7 @@ str = return . T.pack
 
 -- | Dispatch the correct subcommand based on the options.
 dispatch :: Argument -> IO ()
-dispatch args = runBooks (argFile args) $
+dispatch args = runBooksM (argFile args) $
   case argCommand args of
     Add{..}    -> add addTitle addAuthor
     Finish{..} -> maybe finishNoQuery finishWithQuery finishQuery

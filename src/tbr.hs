@@ -10,6 +10,7 @@ import Data.List (isInfixOf)
 import GHC.Generics (Generic)
 import qualified Data.Text as T
 import Text.Shakespeare.Text (st)
+import Data.Default (Default(def))
 import qualified Data.Text.IO as TIO
 import Data.Char (isAlphaNum, isSpace)
 import qualified Data.ByteString as BS
@@ -45,33 +46,40 @@ makeLenses ''BookList
 instance ToJSON BookList
 instance FromJSON BookList
 
+instance Default BookList where
+    def = BookList def def
+
 -- | The BooksM monad allows access to the @BookList@.
 newtype BooksM a = BM { runBM :: ScriptT (StateT BookList IO) a }
   deriving (Monad, MonadState BookList, MonadIO)
 
+-- | Converts the given strict bytestring into a lazy bytestring.
+toLazy :: BS.ByteString -> BSL.ByteString
+toLazy bs = BSL.fromChunks [bs]
+
+-- | Converts the given lazy bytestring into a strict bytestring.
+fromLazy :: BSL.ByteString -> BS.ByteString
+fromLazy = BS.concat . BSL.toChunks
+
 -- | Execute the @BooksM@ monad.
 runBooksM :: FilePath -> BooksM a -> IO a
 runBooksM path b = do
-    -- TODO Error handling
-    bookList <- runScriptT $ catchT (readBookList path)
-                                    (const $ right (BookList [] []))
+    -- Attempt to read the contents of the file into a BookList. If the
+    -- operation fails for any reason, use a default BookList.
+    bookList <- runScriptT $ catchT getList
+                                    (const $ right def)
     (a, bookList') <- runStateT (runScriptT $ runBM b) bookList
-    when (bookList /= bookList') $
-        runScriptT $ writeBookList path bookList'
+    -- If the BookList has been changed, write it the file.
+    when (bookList /= bookList') $ runScriptT $ putList bookList'
     return a
-
--- | Read the given file and deserialize the book list.
-readBookList :: MonadIO m => FilePath -> ScriptT m BookList
-readBookList path = do
-    contents <- scriptIO $ BS.readFile path
-    let lazyContents = BSL.fromChunks [contents]
-    hoistEither $ note "Error parsing the book list." (decode lazyContents)
-
--- | Serialize and write the given book list to the path.
-writeBookList :: MonadIO m => FilePath -> BookList -> ScriptT m ()
-writeBookList path bl = scriptIO $ do
-    createDirectoryIfMissing True (takeDirectory path)
-    BS.writeFile path $ BS.concat (BSL.toChunks $ encode bl)
+  where
+    getList = do
+        contents <- toLazy <$> (scriptIO $ BS.readFile path)
+        hoistEither $ note "The book list is in an invalid format."
+                           (decode contents)
+    putList bl = scriptIO $ do
+        createDirectoryIfMissing True (takeDirectory path)
+        BS.writeFile path (fromLazy $ encode bl)
 
 -- | Query the given list of books for a book that matches the given search
 -- criteria.
@@ -167,7 +175,7 @@ list = do
     when (length reading > 0) $ do
         putLn "Reading:"
         printBookList reading
-        putLn ""
+        when (length toBeRead > 0) (putLn "")
 
     when (length toBeRead > 0) $ do
         putLn "To be read:"

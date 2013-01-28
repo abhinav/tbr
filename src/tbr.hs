@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards, OverloadedStrings, FlexibleContexts,
-             GeneralizedNewtypeDeriving, DeriveGeneric, MultiParamTypeClasses,
-             TemplateHaskell, Rank2Types #-}
+             GeneralizedNewtypeDeriving, DeriveGeneric, TemplateHaskell,
+             Rank2Types, QuasiQuotes #-}
 module Main (main) where
 
 import Data.Text (Text)
@@ -10,6 +10,7 @@ import Data.Maybe (fromJust)
 import Data.List (isInfixOf)
 import GHC.Generics (Generic)
 import qualified Data.Text as T
+import Text.Shakespeare.Text (st)
 import qualified Data.Text.IO as TIO
 import Data.Char (isAlphaNum, isSpace)
 import qualified Data.ByteString as BS
@@ -95,10 +96,6 @@ query l q = uses l (`query'` q)
 putLn :: MonadIO m => Text -> m ()
 putLn = liftIO . TIO.putStrLn
 
--- | A version of @show@ that returns @Text@ instead of @String@s.
-show_ :: Show a => a -> Text
-show_ = T.pack . show
-
 -- START COMMANDS:
 
 status :: MonadBooks m => m ()
@@ -108,14 +105,16 @@ status = do
     case reading of
         []  -> return ()
         [b] ->
-            putLn $ "Reading " <> formatBookNice b
+            putLn [st|Reading #{formatBookNice b}|]
         bs  ->  do
             putLn "Reading:"
             printBookList bs
-    putLn $ "There are " <> show_ tbrCount <> " books to be read."
+    putLn [st|There are #{show tbrCount} books to be read.|]
 
 formatBookNice :: Book -> Text
-formatBookNice b = (b ^. bookTitle) <> " by " <> (b ^. bookAuthor)
+formatBookNice b = [st|#{title} by #{author}|]
+    where title  = b^.bookTitle
+          author = b^.bookAuthor
 
 finishNoQuery :: MonadBooks m => m ()
 finishNoQuery = do
@@ -124,7 +123,7 @@ finishNoQuery = do
         [] -> putLn "You are not reading any book at the moment."
         [b] -> do
             blReading .= []
-            putLn $ "Finished reading " <> formatBookNice b
+            putLn [st|Finished reading #{formatBookNice b}|]
         bs -> do
             putLn "Can you be more specific. You are reading:"
             printBookList bs
@@ -136,7 +135,7 @@ finishWithQuery q = do -- TODO abstract away query checking
         [] -> putLn "Could not find such a book."
         [b] -> do
             blReading %= filter (/= b)
-            putLn $ "Finished reading " <> formatBookNice b
+            putLn [st|Finished reading #{formatBookNice b}|]
         bs -> do
             putLn "Can you be more specific. That query matches:"
             printBookList bs
@@ -183,8 +182,7 @@ formatBookList bs = map format pairs
         pairs = zip nats bs
         numLength = length . show
         maxNumLength =  numLength (length bs)
-        format (i, b) = show_ i <> ". " <> extraSpaces <> author
-                                <> " - "  <> title
+        format (i, b) = [st|#{show i}. #{extraSpaces <> author} - #{title}|]
           where extraSpaces = T.replicate (maxNumLength - numLength i) " "
                 author = b ^. bookAuthor
                 title  = b ^. bookTitle
@@ -200,7 +198,7 @@ pick q = do
         [b] -> do
             blReading  <>= [b]
             blToBeRead %= filter (/= b)
-            putLn $ "Started reading " <> formatBookNice b
+            putLn [st|Started reading #{formatBookNice b}.|]
         bs -> do
             putLn "Can you be more specific. That query matches:"
             printBookList bs
@@ -208,7 +206,7 @@ pick q = do
 add :: MonadBooks m => Text -> Text -> m ()
 add title author = do
     blToBeRead <>= [book]
-    putLn $ "Added " <> formatBookNice book <> " to the reading list."
+    putLn [st|Added #{formatBookNice book} to the reading list.|]
   where book = Book author title
 
 remove :: MonadBooks m => Text -> m ()
@@ -218,7 +216,7 @@ remove q = do
         [] -> putLn "Could not find such a book."
         [b] -> do
             blToBeRead %= filter (/= b)
-            putLn $ "Removed " <> formatBookNice b <> " from the reading list."
+            putLn [st|Removed #{formatBookNice b} from the reading list.|]
         bs -> do
             putLn "Can you be more specific. That query matches:"
             printBookList bs
@@ -231,7 +229,7 @@ stopNoQuery = do
         [b] -> do
             blReading %= filter (/= b)
             blToBeRead <>= [b]
-            putLn $ "Stopped reading " <> formatBookNice b
+            putLn [st|Stopped reading #{formatBookNice b}.|]
         bs -> do
             putLn "Can you be more specific. You are reading:"
             printBookList bs
@@ -244,7 +242,7 @@ stopWithQuery q = do
         [b] -> do
             blReading %= filter (/= b)
             blToBeRead <>= [b]
-            putLn $ "Stopped reading " <> formatBookNice b
+            putLn [st|Stopped reading #{formatBookNice b}.|]
         bs -> do
             putLn "Can you be more specific. That query matches:"
             printBookList bs

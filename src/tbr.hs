@@ -21,8 +21,8 @@ import Script (ScriptT, runScriptT, scriptIO)
 import Control.Monad.State (StateT, runStateT)
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Data.Aeson (FromJSON, ToJSON, encode, decode)
-import Control.Error (note, hoistEither, catchT, right)
 import Control.Applicative ((<$>), (<*>), pure, optional)
+import Control.Error (note, hoistEither, catchT, right, left)
 import System.Directory (getAppUserDataDirectory, createDirectoryIfMissing)
 import Control.Lens (makeLenses, (<>=), (.=), use, (%=), uses, (^.), views, Lens')
 import Options.Applicative
@@ -99,6 +99,18 @@ query' bs q = filter matchBook bs
 query :: (MonadState BookList m) => Lens' BookList [Book] -> Text -> m [Book]
 query l q = uses l (`query'` q)
 
+-- | Similar to @query@ except that only one result is expected. If the query
+-- results in no books, or more than one books, an error is thrown.
+queryOne :: Lens' BookList [Book] -> Text -> BooksM Book
+queryOne l q = BM $ do
+    bs <- query l q
+    case bs of
+        []  -> left ("Unable to find a book matching the query: " <> T.unpack q)
+        [b] -> return b
+        _   -> do putLn "The query matched:"
+                  printBookList bs
+                  left "Please refine the query."
+
 -- | A version of @Data.Text.IO.putStrLn@ that runs in any monad capable of
 -- lifting IO operations.
 putLn :: MonadIO m => Text -> m ()
@@ -113,14 +125,14 @@ status = do
     case reading of
         []  -> return ()
         [b] ->
-            putLn [st|Reading #{formatBookNice b}|]
+            putLn [st|Reading #{formatBook b}|]
         bs  ->  do
             putLn "Reading:"
             printBookList bs
     putLn [st|There are #{show tbrCount} books to be read.|]
 
-formatBookNice :: Book -> Text
-formatBookNice b = [st|#{title} by #{author}|]
+formatBook :: Book -> Text
+formatBook b = [st|#{title} by #{author}|]
     where title  = b^.bookTitle
           author = b^.bookAuthor
 
@@ -131,22 +143,16 @@ finishNoQuery = do
         [] -> putLn "You are not reading any book at the moment."
         [b] -> do
             blReading .= []
-            putLn [st|Finished reading #{formatBookNice b}|]
+            putLn [st|Finished reading #{formatBook b}|]
         bs -> do
             putLn "Can you be more specific. You are reading:"
             printBookList bs
 
 finishWithQuery :: Text -> BooksM ()
-finishWithQuery q = do -- TODO abstract away query checking
-    result <- query blReading q
-    case result of
-        [] -> putLn "Could not find such a book."
-        [b] -> do
-            blReading %= filter (/= b)
-            putLn [st|Finished reading #{formatBookNice b}|]
-        bs -> do
-            putLn "Can you be more specific. That query matches:"
-            printBookList bs
+finishWithQuery q = do
+    b <- queryOne blReading q
+    blReading %= filter (/= b)
+    putLn [st|Finished reading #{formatBook b}|]
 
 search :: Text -> BooksM ()
 search q = do
@@ -200,34 +206,22 @@ formatBookList bs = map format pairs
 -- (file is locked))
 pick :: Text -> BooksM ()
 pick q = do
-    result <- query blToBeRead q
-    case result of
-        [] -> putLn "Could not find such a book."
-        [b] -> do
-            blReading  <>= [b]
-            blToBeRead %= filter (/= b)
-            putLn [st|Started reading #{formatBookNice b}.|]
-        bs -> do
-            putLn "Can you be more specific. That query matches:"
-            printBookList bs
+    b <- queryOne blToBeRead q
+    blReading <>= [b]
+    blToBeRead %= filter (/= b)
+    putLn [st|Started reading #{formatBook b}.|]
 
 add :: Text -> Text -> BooksM ()
 add title author = do
     blToBeRead <>= [book]
-    putLn [st|Added #{formatBookNice book} to the reading list.|]
+    putLn [st|Added #{formatBook book} to the reading list.|]
   where book = Book author title
 
 remove :: Text -> BooksM ()
 remove q = do
-    result <- query blToBeRead q
-    case result of
-        [] -> putLn "Could not find such a book."
-        [b] -> do
-            blToBeRead %= filter (/= b)
-            putLn [st|Removed #{formatBookNice b} from the reading list.|]
-        bs -> do
-            putLn "Can you be more specific. That query matches:"
-            printBookList bs
+    b <- queryOne blToBeRead q
+    blToBeRead %= filter (/= b)
+    putLn [st|Removed #{formatBook b} from the reading list.|]
 
 stopNoQuery :: BooksM ()
 stopNoQuery = do
@@ -237,23 +231,17 @@ stopNoQuery = do
         [b] -> do
             blReading %= filter (/= b)
             blToBeRead <>= [b]
-            putLn [st|Stopped reading #{formatBookNice b}.|]
+            putLn [st|Stopped reading #{formatBook b}.|]
         bs -> do
             putLn "Can you be more specific. You are reading:"
             printBookList bs
 
 stopWithQuery :: Text -> BooksM ()
 stopWithQuery q = do
-    result <- query blReading q
-    case result of
-        [] -> putLn "Could not find such a book."
-        [b] -> do
-            blReading %= filter (/= b)
-            blToBeRead <>= [b]
-            putLn [st|Stopped reading #{formatBookNice b}.|]
-        bs -> do
-            putLn "Can you be more specific. That query matches:"
-            printBookList bs
+    b <- queryOne blReading q
+    blReading %= filter (/= b)
+    blToBeRead <>= [b]
+    putLn [st|Stopped reading #{formatBook b}.|]
 
 -- Interaction mockup:
 --

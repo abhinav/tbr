@@ -60,8 +60,10 @@ runBooksM path b = do
 
 -- | Read the given file and deserialize the book list.
 readBookList :: FilePath -> IO BookList
-readBookList path =
-    fromJust . decode . BSL.fromChunks . (:[]) <$> BS.readFile path
+readBookList path = do
+    contents  <- BS.readFile path
+    let bookList' = decode (BSL.fromChunks [contents])
+    return $ fromJust bookList' -- TODO error handling
 
 -- | Serialize and write the given book list to the path.
 writeBookList :: FilePath -> BookList -> IO ()

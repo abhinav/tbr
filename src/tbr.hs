@@ -6,7 +6,6 @@ module Main (main) where
 import Data.Text (Text)
 import Data.Monoid ((<>))
 import Control.Monad (when)
-import Data.Maybe (fromJust)
 import Data.List (isInfixOf)
 import GHC.Generics (Generic)
 import qualified Data.Text as T
@@ -17,9 +16,11 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
 import System.FilePath ((</>), takeDirectory)
 import Control.Monad.State.Class (MonadState)
+import Script (ScriptT, runScriptT, scriptIO)
 import Control.Monad.State (StateT, runStateT)
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Data.Aeson (FromJSON, ToJSON, encode, decode)
+import Control.Error (note, hoistEither, catchT, right)
 import Control.Applicative ((<$>), (<*>), pure, optional)
 import System.Directory (getAppUserDataDirectory, createDirectoryIfMissing)
 import Control.Lens (makeLenses, (<>=), (.=), use, (%=), uses, (^.), views, Lens')
@@ -45,29 +46,30 @@ instance ToJSON BookList
 instance FromJSON BookList
 
 -- | The BooksM monad allows access to the @BookList@.
-newtype BooksM a = BM { runBM :: StateT BookList IO a }
+newtype BooksM a = BM { runBM :: ScriptT (StateT BookList IO) a }
   deriving (Monad, MonadState BookList, MonadIO)
 
 -- | Execute the @BooksM@ monad.
 runBooksM :: FilePath -> BooksM a -> IO a
 runBooksM path b = do
     -- TODO Error handling
-    bookList <- readBookList path
-    (a, bookList') <- runStateT (runBM b) bookList
+    bookList <- runScriptT $ catchT (readBookList path)
+                                    (const $ right (BookList [] []))
+    (a, bookList') <- runStateT (runScriptT $ runBM b) bookList
     when (bookList /= bookList') $
-        writeBookList path bookList'
+        runScriptT $ writeBookList path bookList'
     return a
 
 -- | Read the given file and deserialize the book list.
-readBookList :: FilePath -> IO BookList
+readBookList :: MonadIO m => FilePath -> ScriptT m BookList
 readBookList path = do
-    contents  <- BS.readFile path
-    let bookList' = decode (BSL.fromChunks [contents])
-    return $ fromJust bookList' -- TODO error handling
+    contents <- scriptIO $ BS.readFile path
+    let lazyContents = BSL.fromChunks [contents]
+    hoistEither $ note "Error parsing the book list." (decode lazyContents)
 
 -- | Serialize and write the given book list to the path.
-writeBookList :: FilePath -> BookList -> IO ()
-writeBookList path bl = do
+writeBookList :: MonadIO m => FilePath -> BookList -> ScriptT m ()
+writeBookList path bl = scriptIO $ do
     createDirectoryIfMissing True (takeDirectory path)
     BS.writeFile path $ BS.concat (BSL.toChunks $ encode bl)
 

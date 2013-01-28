@@ -1,5 +1,6 @@
 {-# LANGUAGE RecordWildCards, OverloadedStrings, FlexibleContexts,
-             GeneralizedNewtypeDeriving, DeriveGeneric, MultiParamTypeClasses #-}
+             GeneralizedNewtypeDeriving, DeriveGeneric, MultiParamTypeClasses,
+             TemplateHaskell #-}
 module Main (main) where
 
 import Data.Text (Text)
@@ -21,22 +22,26 @@ import Data.Aeson (FromJSON, ToJSON, encode, decode)
 import Control.Monad.State.Class (MonadState(get, put))
 import Control.Applicative ((<$>), (<*>), pure, optional)
 import System.Directory (getAppUserDataDirectory, createDirectoryIfMissing)
+import Control.Lens (makeLenses, (<>=), (.=), use, (%=), uses, to, (^.), views)
 import Options.Applicative
     (Parser, argument, metavar, long, short, strOption, help, value,
      subparser, command, info, progDesc, execParser, helper, fullDesc, header)
 
-
-data Book = Book { bookAuthor :: Text
-                 , bookTitle  :: Text }
+data Book = Book { _bookAuthor :: Text
+                 , _bookTitle  :: Text }
   deriving (Show, Eq, Generic)
 instance ToJSON Book
 instance FromJSON Book
 
-data BookList = BookList { blReading  :: [Book]
-                         , blToBeRead :: [Book] }
+makeLenses ''Book
+
+data BookList = BookList { _blReading  :: [Book]
+                         , _blToBeRead :: [Book] }
   deriving (Show, Eq, Generic)
 instance ToJSON BookList
 instance FromJSON BookList
+
+makeLenses ''BookList
 
 class (Monad m, MonadState BookList m, MonadIO m) => MonadBooks m
 
@@ -88,8 +93,8 @@ query bs q = filter matchBook bs
         split   s = T.split isSpace s
         qTokens   = split (clean q)
         matches s = qTokens `isInfixOf` split (clean s)
-        matchBook = (||) <$> matches . bookTitle
-                         <*> matches . bookAuthor
+        matchBook = (||) <$> views bookTitle  matches
+                         <*> views bookAuthor matches
 
 putLn :: MonadIO m => Text -> m ()
 putLn = liftIO . TIO.putStrLn
@@ -99,27 +104,27 @@ show_ = T.pack . show
 
 status :: MonadBooks m => m ()
 status = do
-    BookList{..} <- get
-    case blReading of
+    reading <- use blReading
+    tbrCount <- uses blToBeRead length
+    case reading of
         []  -> return ()
         [b] ->
             putLn $ "Reading " <> formatBookNice b
         bs  ->  do
             putLn "Reading:"
             printBookList bs
-    putLn $ "There are " <> show_ (length blToBeRead)
-                         <> " books to be read."
+    putLn $ "There are " <> show_ tbrCount <> " books to be read."
 
 formatBookNice :: Book -> Text
-formatBookNice Book{..} = bookTitle <> " by " <> bookAuthor
+formatBookNice b = (b ^. bookTitle) <> " by " <> (b ^. bookAuthor)
 
 finishNoQuery :: MonadBooks m => m ()
 finishNoQuery = do
-    bl@(BookList{..}) <- get
-    case blReading of
+    reading <- use blReading
+    case reading of
         [] -> putLn "You are not reading any book at the moment."
         [b] -> do
-            put (bl { blReading = [] })
+            blReading .= []
             putLn $ "Finished reading " <> formatBookNice b
         bs -> do
             putLn "Can you be more specific. You are reading:"
@@ -127,11 +132,11 @@ finishNoQuery = do
 
 finishWithQuery :: MonadBooks m => Text -> m ()
 finishWithQuery q = do -- TODO abstract away query checking
-    bl@(BookList{..}) <- get
-    case (query blReading q) of
+    reading <- use blReading
+    case (query reading q) of
         [] -> putLn "Could not find such a book."
         [b] -> do
-            put (bl { blReading = [] })
+            blReading %= filter (/= b)
             putLn $ "Finished reading " <> formatBookNice b
         bs -> do
             putLn "Can you be more specific. That query matches:"
@@ -139,11 +144,10 @@ finishWithQuery q = do -- TODO abstract away query checking
 
 search :: MonadBooks m => Text -> m ()
 search q = do
-    BookList{..} <- get
-    let reading  = query blReading  q
-        toBeRead = query blToBeRead q
+    reading  <- uses blReading  queryList
+    toBeRead <- uses blToBeRead queryList
 
-        readCount = length reading
+    let readCount = length reading
         tbrCount  = length toBeRead
 
     when (readCount > 0) $ do
@@ -157,18 +161,21 @@ search q = do
     when ((readCount, tbrCount) == (0, 0)) $ do
         putLn "No such books found."
 
+  where queryList l = query l q
+
 list :: MonadBooks m => m ()
 list = do
-    BookList{..} <- get
+    reading <- use blReading
+    toBeRead <- use blToBeRead
 
-    when (length blReading > 0) $ do
+    when (length reading > 0) $ do
         putLn "Reading:"
-        printBookList blReading
+        printBookList reading
         putLn ""
 
-    when (length blToBeRead > 0) $ do
+    when (length toBeRead > 0) $ do
         putLn "To be read:"
-        printBookList blToBeRead
+        printBookList toBeRead
 
 printBookList :: (MonadIO m) => [Book] -> m ()
 printBookList bs = liftIO $ mapM_ TIO.putStrLn (formatBookList bs)
@@ -179,21 +186,23 @@ formatBookList bs = map format pairs
         pairs = zip nats bs
         numLength = length . show
         maxNumLength =  numLength (length bs)
-        format (i, Book{..}) = show_ i <> ". " <> extraSpaces <> bookAuthor
-                                       <> " - "  <> bookTitle
+        format (i, b) = show_ i <> ". " <> extraSpaces <> author
+                                <> " - "  <> title
           where extraSpaces = T.replicate (maxNumLength - numLength i) " "
+                author = b ^. bookAuthor
+                title  = b ^. bookTitle
 
 -- TODO fix the following error:
 -- tbr: user error (/Users/abhinav/.tbr/tbr.txt: openBinaryFile: resource busy
 -- (file is locked))
 pick :: MonadBooks m => Text -> m ()
 pick q = do
-    bl@(BookList{..}) <- get
-    case query blToBeRead q of
+    toBeRead <- use blToBeRead
+    case query toBeRead q of
         [] -> putLn "Could not find such a book."
         [b] -> do
-            put $ bl { blReading  = b:blReading
-                     , blToBeRead = filter (/= b) blToBeRead  }
+            blReading  <>= [b]
+            blToBeRead %= filter (/= b)
             putLn $ "Finished reading " <> formatBookNice b
         bs -> do
             putLn "Can you be more specific. That query matches:"
@@ -201,18 +210,17 @@ pick q = do
 
 add :: MonadBooks m => Text -> Text -> m ()
 add title author = do
-    bl@(BookList{blToBeRead = toBeRead }) <- get -- TODO check dupes
-    put $ bl { blToBeRead = book:toBeRead }
+    blToBeRead <>= [book]
     putLn $ "Added " <> formatBookNice book <> " to the reading list."
-  where book = Book { bookTitle = title, bookAuthor = author }
+  where book = Book author title
 
 remove :: MonadBooks m => Text -> m ()
 remove q = do
-    bl@(BookList{blToBeRead = toBeRead}) <- get
+    toBeRead <- use blToBeRead
     case query toBeRead q of
         [] -> putLn "Could not find such a book."
         [b] -> do
-            put $ bl { blToBeRead = filter (/= b) toBeRead  }
+            blToBeRead %= filter (/= b)
             putLn $ "Removed " <> formatBookNice b <> " from the reading list."
         bs -> do
             putLn "Can you be more specific. That query matches:"
@@ -220,12 +228,12 @@ remove q = do
 
 stopNoQuery :: MonadBooks m => m ()
 stopNoQuery = do
-    bl@(BookList{..}) <- get
-    case blReading of
+    reading <- use blReading
+    case reading of
         [] -> putLn "You are not reading any book."
         [b] -> do
-            put $ bl { blReading = filter (/= b) blReading
-                     , blToBeRead = b:blToBeRead }
+            blReading %= filter (/= b)
+            blToBeRead <>= [b]
             putLn $ "Stopped reading " <> formatBookNice b
         bs -> do
             putLn "Can you be more specific. You are reading:"
@@ -233,12 +241,12 @@ stopNoQuery = do
 
 stopWithQuery :: MonadBooks m => Text -> m ()
 stopWithQuery q = do
-    bl@(BookList{..}) <- get
-    case query blReading q of
+    reading <- use blReading
+    case query reading q of
         [] -> putLn "Could not find such a book."
         [b] -> do
-            put $ bl { blReading = filter (/= b) blReading
-                     , blToBeRead = b:blToBeRead }
+            blReading %= filter (/= b)
+            blToBeRead <>= [b]
             putLn $ "Stopped reading " <> formatBookNice b
         bs -> do
             putLn "Can you be more specific. That query matches:"

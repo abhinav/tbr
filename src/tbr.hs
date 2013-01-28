@@ -12,6 +12,7 @@ import GHC.Generics (Generic)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Data.Char (isAlphaNum, isSpace)
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
 import System.FilePath ((</>), takeDirectory)
 import Control.Monad.State.Class (MonadState)
@@ -58,12 +59,13 @@ runBooks path b = do
     return a
 
 readBookList :: FilePath -> IO BookList
-readBookList path = fromJust . decode <$> BSL.readFile path
+readBookList path =
+    fromJust . decode . BSL.fromChunks . (:[]) <$> BS.readFile path
 
 writeBookList :: FilePath -> BookList -> IO ()
 writeBookList path bl = do
     createDirectoryIfMissing True (takeDirectory path)
-    BSL.writeFile path (encode bl)
+    BS.writeFile path $ BS.concat (BSL.toChunks $ encode bl)
 
 -- | Query the given list of books for a book that matches the given search
 -- criteria.
@@ -184,7 +186,7 @@ pick q = do
         [b] -> do
             blReading  <>= [b]
             blToBeRead %= filter (/= b)
-            putLn $ "Finished reading " <> formatBookNice b
+            putLn $ "Started reading " <> formatBookNice b
         bs -> do
             putLn "Can you be more specific. That query matches:"
             printBookList bs

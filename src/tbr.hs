@@ -44,13 +44,9 @@ makeLenses ''BookList
 instance ToJSON BookList
 instance FromJSON BookList
 
--- | Commands in the program run in a monad that conforms to this class.
-class (Monad m, MonadState BookList m, MonadIO m) => MonadBooks m
-
 -- | The BooksM monad allows access to the @BookList@.
 newtype BooksM a = BM { runBM :: StateT BookList IO a }
   deriving (Monad, MonadState BookList, MonadIO)
-instance MonadBooks BooksM
 
 -- | Execute the @BooksM@ monad.
 runBooksM :: FilePath -> BooksM a -> IO a
@@ -98,7 +94,7 @@ putLn = liftIO . TIO.putStrLn
 
 -- START COMMANDS:
 
-status :: MonadBooks m => m ()
+status :: BooksM ()
 status = do
     reading <- use blReading
     tbrCount <- uses blToBeRead length
@@ -116,7 +112,7 @@ formatBookNice b = [st|#{title} by #{author}|]
     where title  = b^.bookTitle
           author = b^.bookAuthor
 
-finishNoQuery :: MonadBooks m => m ()
+finishNoQuery :: BooksM ()
 finishNoQuery = do
     reading <- use blReading
     case reading of
@@ -128,7 +124,7 @@ finishNoQuery = do
             putLn "Can you be more specific. You are reading:"
             printBookList bs
 
-finishWithQuery :: MonadBooks m => Text -> m ()
+finishWithQuery :: Text -> BooksM ()
 finishWithQuery q = do -- TODO abstract away query checking
     result <- query blReading q
     case result of
@@ -140,7 +136,7 @@ finishWithQuery q = do -- TODO abstract away query checking
             putLn "Can you be more specific. That query matches:"
             printBookList bs
 
-search :: MonadBooks m => Text -> m ()
+search :: Text -> BooksM ()
 search q = do
     reading  <- query blReading  q
     toBeRead <- query blToBeRead q
@@ -159,7 +155,7 @@ search q = do
     when ((readCount, tbrCount) == (0, 0)) $ do
         putLn "No such books found."
 
-list :: MonadBooks m => m ()
+list :: BooksM ()
 list = do
     reading <- use blReading
     toBeRead <- use blToBeRead
@@ -190,7 +186,7 @@ formatBookList bs = map format pairs
 -- TODO fix the following error:
 -- tbr: user error (/Users/abhinav/.tbr/tbr.txt: openBinaryFile: resource busy
 -- (file is locked))
-pick :: MonadBooks m => Text -> m ()
+pick :: Text -> BooksM ()
 pick q = do
     result <- query blToBeRead q
     case result of
@@ -203,13 +199,13 @@ pick q = do
             putLn "Can you be more specific. That query matches:"
             printBookList bs
 
-add :: MonadBooks m => Text -> Text -> m ()
+add :: Text -> Text -> BooksM ()
 add title author = do
     blToBeRead <>= [book]
     putLn [st|Added #{formatBookNice book} to the reading list.|]
   where book = Book author title
 
-remove :: MonadBooks m => Text -> m ()
+remove :: Text -> BooksM ()
 remove q = do
     result <- query blToBeRead q
     case result of
@@ -221,7 +217,7 @@ remove q = do
             putLn "Can you be more specific. That query matches:"
             printBookList bs
 
-stopNoQuery :: MonadBooks m => m ()
+stopNoQuery :: BooksM ()
 stopNoQuery = do
     reading <- use blReading
     case reading of
@@ -234,7 +230,7 @@ stopNoQuery = do
             putLn "Can you be more specific. You are reading:"
             printBookList bs
 
-stopWithQuery :: MonadBooks m => Text -> m ()
+stopWithQuery :: Text -> BooksM ()
 stopWithQuery q = do
     result <- query blReading q
     case result of

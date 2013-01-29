@@ -128,7 +128,28 @@ getReading = BM $ do
 putLn :: MonadIO m => Text -> m ()
 putLn = liftIO . TIO.putStrLn
 
--- START COMMANDS:
+-- Formatting:
+
+formatBook :: Book -> Text
+formatBook b = [st|#{title} by #{author}|]
+    where title  = b^.bookTitle
+          author = b^.bookAuthor
+
+printBookList :: (MonadIO m) => [Book] -> m ()
+printBookList bs = liftIO $ mapM_ TIO.putStrLn (formatBookList bs)
+
+formatBookList :: [Book] -> [Text]
+formatBookList bs = map format pairs
+  where nats = 1:map (+1) nats
+        pairs = zip nats bs
+        numLength = length . show
+        maxNumLength =  numLength (length bs)
+        format (i, b) = [st|#{show i}. #{extraSpaces <> author} - #{title}|]
+          where extraSpaces = T.replicate (maxNumLength - numLength i) " "
+                author = b ^. bookAuthor
+                title  = b ^. bookTitle
+
+-- Commands:
 
 status :: BooksM ()
 status = do
@@ -137,11 +158,6 @@ status = do
 
     tbrCount <- uses blToBeRead length
     putLn [st|There are #{show tbrCount} books to be read.|]
-
-formatBook :: Book -> Text
-formatBook b = [st|#{title} by #{author}|]
-    where title  = b^.bookTitle
-          author = b^.bookAuthor
 
 finish :: Book -> BooksM ()
 finish b = do blReading %= filter (/= b)
@@ -180,23 +196,6 @@ list = do
         putLn "To be read:"
         printBookList toBeRead
 
-printBookList :: (MonadIO m) => [Book] -> m ()
-printBookList bs = liftIO $ mapM_ TIO.putStrLn (formatBookList bs)
-
-formatBookList :: [Book] -> [Text]
-formatBookList bs = map format pairs
-  where nats = 1:map (+1) nats
-        pairs = zip nats bs
-        numLength = length . show
-        maxNumLength =  numLength (length bs)
-        format (i, b) = [st|#{show i}. #{extraSpaces <> author} - #{title}|]
-          where extraSpaces = T.replicate (maxNumLength - numLength i) " "
-                author = b ^. bookAuthor
-                title  = b ^. bookTitle
-
--- TODO fix the following error:
--- tbr: user error (/Users/abhinav/.tbr/tbr.txt: openBinaryFile: resource busy
--- (file is locked))
 pick :: Text -> BooksM ()
 pick q = do
     b <- queryOne blToBeRead q
@@ -221,7 +220,7 @@ stop b = do blReading  %= filter (/= b)
             blToBeRead <>= [b]
             putLn [st|Stopped redaing #{formatBook b}.|]
 
--- COMMAND LINE STUFF STARTS HERE:
+-- Argument parsing and dispatch:
 
 str :: Monad m => String -> m Text
 str = return . T.pack

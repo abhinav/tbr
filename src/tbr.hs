@@ -24,7 +24,7 @@ import Data.Aeson (FromJSON, ToJSON, encode, decode)
 import Control.Applicative ((<$>), (<*>), pure, optional)
 import Control.Error (note, hoistEither, catchT, right, left)
 import System.Directory (getAppUserDataDirectory, createDirectoryIfMissing)
-import Control.Lens (makeLenses, (<>=), (.=), use, (%=), uses, (^.), views, Lens')
+import Control.Lens (makeLenses, (<>=), use, (%=), uses, (^.), views, Lens')
 import Options.Applicative
     (Parser, argument, metavar, long, short, strOption, help, value,
      subparser, command, info, progDesc, execParser, helper, fullDesc, header)
@@ -111,6 +111,18 @@ queryOne l q = BM $ do
                   printBookList bs
                   left "Please refine the query."
 
+-- | Get the book currently being read. If the reading list is empty, or there
+-- are greater than one books in it, then an error is thrown.
+getReading :: BooksM Book
+getReading = BM $ do
+    bs <- use blReading
+    case bs of
+        []  -> left "You are not reading any book at the moment."
+        [b] -> return b
+        _   -> do putLn "You are currently reading:"
+                  printBookList bs
+                  left "Please provide a query."
+
 -- | A version of @Data.Text.IO.putStrLn@ that runs in any monad capable of
 -- lifting IO operations.
 putLn :: MonadIO m => Text -> m ()
@@ -120,15 +132,10 @@ putLn = liftIO . TIO.putStrLn
 
 status :: BooksM ()
 status = do
-    reading <- use blReading
+    putLn "Reading:"
+    use blReading >>= printBookList
+
     tbrCount <- uses blToBeRead length
-    case reading of
-        []  -> return ()
-        [b] ->
-            putLn [st|Reading #{formatBook b}|]
-        bs  ->  do
-            putLn "Reading:"
-            printBookList bs
     putLn [st|There are #{show tbrCount} books to be read.|]
 
 formatBook :: Book -> Text
@@ -136,23 +143,9 @@ formatBook b = [st|#{title} by #{author}|]
     where title  = b^.bookTitle
           author = b^.bookAuthor
 
-finishNoQuery :: BooksM ()
-finishNoQuery = do
-    reading <- use blReading
-    case reading of
-        [] -> putLn "You are not reading any book at the moment."
-        [b] -> do
-            blReading .= []
-            putLn [st|Finished reading #{formatBook b}|]
-        bs -> do
-            putLn "Can you be more specific. You are reading:"
-            printBookList bs
-
-finishWithQuery :: Text -> BooksM ()
-finishWithQuery q = do
-    b <- queryOne blReading q
-    blReading %= filter (/= b)
-    putLn [st|Finished reading #{formatBook b}|]
+finish :: Book -> BooksM ()
+finish b = do blReading %= filter (/= b)
+              putLn [st|Finished reading #{formatBook b}|]
 
 search :: Text -> BooksM ()
 search q = do
@@ -223,61 +216,10 @@ remove q = do
     blToBeRead %= filter (/= b)
     putLn [st|Removed #{formatBook b} from the reading list.|]
 
-stopNoQuery :: BooksM ()
-stopNoQuery = do
-    reading <- use blReading
-    case reading of
-        [] -> putLn "You are not reading any book."
-        [b] -> do
-            blReading %= filter (/= b)
+stop :: Book -> BooksM ()
+stop b = do blReading  %= filter (/= b)
             blToBeRead <>= [b]
-            putLn [st|Stopped reading #{formatBook b}.|]
-        bs -> do
-            putLn "Can you be more specific. You are reading:"
-            printBookList bs
-
-stopWithQuery :: Text -> BooksM ()
-stopWithQuery q = do
-    b <- queryOne blReading q
-    blReading %= filter (/= b)
-    blToBeRead <>= [b]
-    putLn [st|Stopped reading #{formatBook b}.|]
-
--- Interaction mockup:
---
--- $ tbr status
--- Currently reading: Good Omens by Terry Pratchett; Neil Gaiman
--- There are 42 other books to be read.
--- $ tbr finish
--- Finished reading Good Omens by Terry Pratchett; Neil Gaiman
--- $ tbr status
--- There are 42 books to be read.
--- $ tbr list
--- To be read:
--- 1.  Brandon Sanderson - The Final Empire
--- 2.                    - The Way of Kings
--- 3.  Brian K. Vaughan - Y: The Last Man, Volume 3
--- 4.  Connie Willis - Blackout
--- 5.                - Doomsday Book
--- [...]
--- 42. William Gibson - Neuromancer
--- $ tbr pick 'way of kings'
--- Started reading The Way of Kings by Brandon Sanderson.
--- $ tbr add 'Foundation and Empire' 'isaac asimov'
--- Added Foundation and Empire by Isaac Asimov to the reading list.
--- $ tbr remove 'y the last man'
--- Removed Y: The Last Man, Volume 3 by Brian K. Vaughan from the reading
--- list.
--- $ tbr pick 'foundation and empire'
--- Started reading Foundation and Empire by Isaac Asimov.
--- $ tbr stop
--- Can you be more specific? You are currently reading:
--- - Brandon Sanderson - The Way of Kings
--- - Isaac Asimov - Foundation and Empire
--- $ tbr stop 'way of kings'
--- Stopped reading The Way of Kings by Brandon Sanderson.
--- $ tbr remove 'way of kings'
--- Removed The Way of Kings by Brandon Sanderson from the reading list.
+            putLn [st|Stopped redaing #{formatBook b}.|]
 
 -- COMMAND LINE STUFF STARTS HERE:
 
@@ -289,13 +231,13 @@ dispatch :: Argument -> IO ()
 dispatch args = runBooksM (argFile args) $
   case argCommand args of
     Add{..}    -> add addTitle addAuthor
-    Finish{..} -> maybe finishNoQuery finishWithQuery finishQuery
+    Finish{..} -> maybe getReading (queryOne blReading) finishQuery >>= finish
     List       -> list
     Pick{..}   -> pick pickQuery
     Remove{..} -> remove removeQuery
     Search{..} -> search searchQuery
     Status     -> status
-    Stop{..}   -> maybe stopNoQuery stopWithQuery stopQuery
+    Stop{..}   -> maybe getReading (queryOne blReading) stopQuery >>= stop
         
 -- | Represents the subcommands offered by the program.
 data Command = Add { addTitle :: Text

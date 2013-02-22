@@ -4,7 +4,7 @@
 [ ]
 :   Change Markdown parser to use Seqs instead of lists.
 
-[ ]
+[✓]
 :   Markdown TBR writer.
 
 [ ]

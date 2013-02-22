@@ -26,7 +26,7 @@ header :: Parser Header
 header = restOfLine <* many1 (char '=')
 
 entry :: Parser Entry
-entry = itemNumber >> (singleBook <|> multipleBooks)
+entry = itemNumber >> (singleBook <|> multipleBooks) <* skipLines
     where itemNumber = (decimal :: Parser Integer) <* char '.' <* skipSpace
 
 singleBook :: Parser Entry
@@ -44,8 +44,8 @@ multipleBooks = Entry <$> author
           bookItem = char '-' >> skipSpace >> restOfLine
 
 block :: Parser Block
-block = Block <$> (header <* skipLines)
-              <*> many' entry
+block = (Block <$> (header <* skipLines)
+               <*> many' entry) <* skipLines
 
 document :: Parser Document
 document = fmap Document $

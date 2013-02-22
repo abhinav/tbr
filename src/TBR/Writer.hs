@@ -8,15 +8,15 @@ import           Control.Monad.State
 import           Control.Monad.Writer
 import           Data.Text.Lazy.Builder
 
-type TextBuilder = Writer Builder ()
+type TextBuilder = Writer Builder
 
-runTextBuilder :: TextBuilder -> Text
+runTextBuilder :: TextBuilder a -> Text
 runTextBuilder = toLazyText . execWriter
 
-tellText :: T.Text -> TextBuilder
-tellText = tell . fromText
+tellText :: T.Text -> TextBuilder ()
+tellText = void . tell . fromText
 
-type Counter = StateT Integer
+type Counter m = StateT Integer m
 
 runCounter :: Monad m => Counter m a -> m a
 runCounter = flip evalStateT 1
@@ -26,40 +26,42 @@ next = do x <- get
           put (x + 1)
           return x
 
-newln :: TextBuilder
-newln = tell "\n"
+newln :: TextBuilder ()
+newln = void $ tell "\n"
 
 writeDocument :: Document -> Text
 writeDocument = runTextBuilder . mapM_ writeBlocks . documentBlocks
 
-writeBlocks :: Block -> TextBuilder
-writeBlocks Block{..} = writeHeader blockHeader >> newln
-                     >> mapM_ (writeEntry numEntries) blockEntries
-    where numEntries = fromIntegral $ length blockEntries
+writeBlocks :: Block -> TextBuilder ()
+writeBlocks Block{..} = void $ 
+       writeHeader blockHeader >> newln
+    >> runCounter (mapM_ (writeEntry numEntries) blockEntries)
+    >> newln
+  where numEntries = fromIntegral $ length blockEntries
 
-writeHeader :: Header -> TextBuilder
-writeHeader hdr = tellText hdr             >> newln
+writeHeader :: Header -> TextBuilder ()
+writeHeader hdr = void $ tellText hdr      >> newln
                >> underline (T.length hdr) >> newln
   where underline n = tellText $ T.replicate (fromIntegral n) "="
 
-writeEntry :: Integer -> Entry -> TextBuilder
+writeEntry :: Integer -> Entry -> Counter TextBuilder ()
 writeEntry _ (Entry _ []) = return ()
-writeEntry total Entry{..} = runCounter $ do
+writeEntry total Entry{..} = do
     pos <- next
     lift $ do
         tell (fromString $ show pos) >> tell ". "
         tellText $ spaces (numLen total - numLen pos)
         case entryBooks of
-            [b] -> tellText b >> tell " - " >> tellText entryAuthor
-            bs  -> tellText entryAuthor >> tell " - "
+            [b] -> tellText b >> tell " - " >> tellText entryAuthor >> newln
+            bs  -> tellText entryAuthor >> newln
                 >> mapM_ writeBook bs
   where
     numLen = length . show
     spaces = flip T.replicate " "
 
-    writeBook :: Book -> TextBuilder
-    writeBook b = do
-        tellText $ spaces (numLen total + 3)
-        tell "- "
+    writeBook :: Book -> TextBuilder ()
+    writeBook b = void $ do
+        tellText $ spaces (numLen total + 2)
+        tell "-   "
         tellText b
-
+        newln

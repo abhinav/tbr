@@ -22,3 +22,4 @@ data Block = Block { blockHeader  :: Header
         deriving (Show, Eq)
 
 data Document = Document { documentBlocks :: [Block] }
+        deriving (Show, Eq)

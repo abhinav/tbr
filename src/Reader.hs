@@ -47,6 +47,9 @@ block :: Parser Block
 block = Block <$> (header <* skipLines)
               <*> many' entry
 
-parseDocument :: Parser Document
-parseDocument = fmap Document $
+document :: Parser Document
+document = fmap Document $
     option () (void comment) >> skipLines >> many1 block
+
+parseDocument :: Text -> Either String Document
+parseDocument = parseOnly document

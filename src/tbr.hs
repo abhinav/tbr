@@ -36,6 +36,9 @@ data BookList = BookList { blReading     :: [Book]
 instance Default BookList where
     def = BookList [] [] []
 
+--------------------------------------------------------------------------------
+-- Data type conversion
+
 -- | Convert a @Document@ into a @BookList@. Throws an error if the three
 -- sections are absent.
 documentToBookList :: (Monad m, Functor m) => TBR.Document -> ScriptT m BookList
@@ -76,12 +79,23 @@ bookListToDocument BookList{..} = TBR.Document
     toEntry bs@(b:_)   = TBR.Entry (bookAuthor b) (map bookTitle bs)
     toEntry _          = error "This can't happen."
 
+--------------------------------------------------------------------------------
+-- Generic text utilities
+
 -- | Splits the given string into tokens that contain only alphanumeric
 -- characters.
 tokens :: Text -> [Text]
 tokens = T.split isSpace . clean
     where clean   = T.toLower . T.filter isValid
           isValid = (||) <$> isSpace <*> isAlphaNum
+
+-- | A version of @Data.Text.IO.putStrLn@ that runs in any monad capable of
+-- lifting IO operations.
+putLn :: MonadIO m => Text -> m ()
+putLn = liftIO . TIO.putStrLn
+
+--------------------------------------------------------------------------------
+-- Monad
 
 -- | The BooksM monad allows access to the @BookList@.
 newtype BooksM a = BM { runBM :: ScriptT (StateT BookList IO) a }
@@ -107,6 +121,9 @@ runBooksM path b = do
     putList bl = scriptIO $ do
         createDirectoryIfMissing True (takeDirectory path)
         TLIO.writeFile path (writeDocument $ bookListToDocument bl)
+
+--------------------------------------------------------------------------------
+-- Operations on Monad
 
 -- | Query the given list of books for a book that matches the given search
 -- criteria.
@@ -151,12 +168,8 @@ getReading = BM $ do
                   printBookList bs
                   left "Please provide a query."
 
--- | A version of @Data.Text.IO.putStrLn@ that runs in any monad capable of
--- lifting IO operations.
-putLn :: MonadIO m => Text -> m ()
-putLn = liftIO . TIO.putStrLn
-
--- Formatting:
+--------------------------------------------------------------------------------
+-- Formatting
 
 formatBook :: Book -> Text
 formatBook Book{..} = [st|#{bookTitle} by #{bookAuthor}|]
@@ -175,7 +188,8 @@ formatBookList bs = map format pairs
               author = bookAuthor b
               title  = bookTitle  b
 
--- Commands:
+--------------------------------------------------------------------------------
+-- Commands
 
 status :: BooksM ()
 status = do
@@ -263,7 +277,8 @@ stop b = BM $ do
            , blToBeRead = b:blToBeRead }
     putLn [st|Stopped reading #{formatBook b}.|]
 
--- Argument parsing and dispatch:
+--------------------------------------------------------------------------------
+-- Argument parsing and dispatch
 
 text :: Monad m => String -> m Text
 text = return . T.pack

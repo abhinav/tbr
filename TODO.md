@@ -1,21 +1,26 @@
 [✓]
 :   Markdown TBR reader.
 
-[ ]
-:   Change Markdown parser to use Seqs instead of lists.
-
 [✓]
 :   Markdown TBR writer.
 
-[ ]
+[✓]
 :   Integrate Markdown TBR read/write.
+
+[ ]
+:   Support changing the low-priority list.
+
+[ ]
+:   Reduce duplication caused by two book-list types.
 
 [ ]
 :   Tests
 
 [ ]
 :   Remove unused libraries from cabal file.
-:   Remove Lens
+
+[ ]
+:   Normalize author names and book names.
 
 [ ]
 :   Config file to store location of TBR.

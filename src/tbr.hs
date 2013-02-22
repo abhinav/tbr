@@ -1,124 +1,152 @@
-{-# LANGUAGE RecordWildCards, OverloadedStrings, FlexibleContexts,
-             GeneralizedNewtypeDeriving, DeriveGeneric, TemplateHaskell,
-             Rank2Types, QuasiQuotes #-}
+{-# LANGUAGE RecordWildCards, OverloadedStrings, GeneralizedNewtypeDeriving,
+             QuasiQuotes, FlexibleContexts #-}
 module Main (main) where
 
-import Data.Text (Text)
-import Data.Monoid ((<>))
-import Control.Monad (when)
-import Data.List (isInfixOf)
-import GHC.Generics (Generic)
-import qualified Data.Text as T
-import Text.Shakespeare.Text (st)
-import Data.Default (Default(def))
-import qualified Data.Text.IO as TIO
-import Data.Char (isAlphaNum, isSpace)
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Lazy as BSL
-import System.FilePath ((</>), takeDirectory)
-import Control.Monad.State.Class (MonadState)
-import Control.Monad.State (StateT, runStateT)
-import Control.Monad.IO.Class (MonadIO(liftIO))
-import TBR.Script (ScriptT, runScriptT, scriptIO)
-import Data.Aeson (FromJSON, ToJSON, encode, decode)
-import Control.Applicative ((<$>), (<*>), pure, optional)
-import Control.Error (note, hoistEither, catchT, right, left)
-import System.Directory (getAppUserDataDirectory, createDirectoryIfMissing)
-import Control.Lens (makeLenses, (<>=), use, (%=), uses, (^.), views, Lens')
-import Options.Applicative
-    (Parser, argument, metavar, long, short, strOption, help, value,
-     subparser, command, info, progDesc, execParser, helper, fullDesc, header)
+import qualified TBR.Types                 as TBR
+import           TBR.Script
+import           TBR.Reader
+import           TBR.Writer
 
--- | Represents a Book.
-data Book = Book { _bookAuthor :: Text
-                 , _bookTitle  :: Text }
-  deriving (Show, Eq, Generic)
-makeLenses ''Book
-instance ToJSON Book
-instance FromJSON Book
+import           Data.Text                 (Text)
+import           Data.List                 (isInfixOf, sortBy, groupBy, intersect)
+import           Data.Char                 (isAlphaNum, isSpace)
+import qualified Data.Text                 as T
+import           Data.Default              (Default(def))
+import qualified Data.Text.IO              as TIO
+import           Control.Error             (hoistEither, catchT, right, left)
+import           Control.Monad             (when, unless)
+import           System.FilePath           ((</>), takeDirectory)
+import           System.Directory          (getAppUserDataDirectory, createDirectoryIfMissing)
+import qualified Data.Text.Lazy.IO         as TLIO
+import           Options.Applicative
+import           Control.Monad.State       (StateT, runStateT)
+import           Text.Shakespeare.Text     (st)
+import           Control.Monad.IO.Class
+import           Control.Monad.State.Class
 
--- | Represents the complete reading list. Contains both, the books that are
--- to be read and that are being read.
-data BookList = BookList { _blReading  :: [Book]
-                         , _blToBeRead :: [Book] }
-  deriving (Show, Eq, Generic)
-makeLenses ''BookList
-instance ToJSON BookList
-instance FromJSON BookList
+data Book = Book { bookAuthor :: Text
+                 , bookTitle  :: Text }
+    deriving (Show, Eq)
+
+data BookList = BookList { blReading     :: [Book]
+                         , blToBeRead    :: [Book]
+                         , blLowPriority :: [Book] }
+    deriving (Show, Eq)
 
 instance Default BookList where
-    def = BookList def def
+    def = BookList [] [] []
+
+-- | Convert a @Document@ into a @BookList@. Throws an error if the three
+-- sections are absent.
+documentToBookList :: (Monad m, Functor m) => TBR.Document -> ScriptT m BookList
+documentToBookList TBR.Document{..} = BookList
+                                  <$> blockBooks "Reading"
+                                  <*> blockBooks "To be read"
+                                  <*> blockBooks "Low priority"
+  where
+    blockBooks :: (Monad m, Functor m) => Text -> ScriptT m [Book]
+    blockBooks name = concatMap entryToBooks <$> lookupBlock name
+
+    -- Get the entries for the block with the given name or fail.
+    lookupBlock :: (Monad m, Functor m) => Text -> ScriptT m [TBR.Entry]
+    lookupBlock name = 
+        case filter (match . TBR.blockHeader) documentBlocks of
+            []  -> left [st|Could not find the section: #{name}|]
+            [x] -> right (TBR.blockEntries x)
+            _   -> left [st|Multiple "#{name}" sections found.|]
+        where nameTok = tokens name
+              match   = (== nameTok) . tokens
+
+    entryToBooks :: TBR.Entry -> [Book]
+    entryToBooks TBR.Entry{..} = map (Book entryAuthor) entryBooks
+
+-- | Convert a @BookList@ into a @Document@.
+bookListToDocument :: BookList -> TBR.Document
+bookListToDocument BookList{..} = TBR.Document
+    [ toBlock "Reading"      blReading
+    , toBlock "To Be Read"   blToBeRead
+    , toBlock "Low Priority" blLowPriority ]
+  where
+    bookCompare a b    = compare (bookAuthor a) (bookAuthor b)
+    bookGroup   a b    = bookAuthor a == bookAuthor b
+    toBlock name books = let sorted = sortBy bookCompare books
+                             grouped = groupBy bookGroup sorted
+                             entries = map toEntry grouped
+                         in TBR.Block name entries
+    toEntry bs@(b:_)   = TBR.Entry (bookAuthor b) (map bookTitle bs)
+    toEntry _          = error "This can't happen."
+
+-- | Splits the given string into tokens that contain only alphanumeric
+-- characters.
+tokens :: Text -> [Text]
+tokens = T.split isSpace . clean
+    where clean   = T.toLower . T.filter isValid
+          isValid = (||) <$> isSpace <*> isAlphaNum
 
 -- | The BooksM monad allows access to the @BookList@.
 newtype BooksM a = BM { runBM :: ScriptT (StateT BookList IO) a }
-  deriving (Monad, MonadState BookList, MonadIO)
-
--- | Converts the given strict bytestring into a lazy bytestring.
-toLazy :: BS.ByteString -> BSL.ByteString
-toLazy bs = BSL.fromChunks [bs]
-
--- | Converts the given lazy bytestring into a strict bytestring.
-fromLazy :: BSL.ByteString -> BS.ByteString
-fromLazy = BS.concat . BSL.toChunks
+  deriving (Applicative, Functor, Monad, MonadState BookList, MonadIO)
 
 -- | Execute the @BooksM@ monad.
 runBooksM :: FilePath -> BooksM a -> IO a
 runBooksM path b = do
     -- Attempt to read the contents of the file into a BookList. If the
     -- operation fails for any reason, use a default BookList.
-    bookList <- runScriptT $ catchT getList
-                                    (const $ right def)
+    bookList <- runScriptT $ catchT parseList (const $ right def)
     (a, bookList') <- runStateT (runScriptT $ runBM b) bookList
+
     -- If the BookList has been changed, write it the file.
     when (bookList /= bookList') $ runScriptT $ putList bookList'
     return a
   where
-    getList = do
-        contents <- toLazy <$> (scriptIO $ BS.readFile path)
-        hoistEither $ note "The book list is in an invalid format."
-                           (decode contents)
+    parseList = do 
+        contents <- scriptIO (TIO.readFile path)
+        document <- catchT (hoistEither $ parseDocument contents)
+                           (left . T.pack)
+        documentToBookList document
     putList bl = scriptIO $ do
         createDirectoryIfMissing True (takeDirectory path)
-        BS.writeFile path (fromLazy $ encode bl)
+        TLIO.writeFile path (writeDocument $ bookListToDocument bl)
 
 -- | Query the given list of books for a book that matches the given search
 -- criteria.
 query' :: [Book] -> Text -> [Book]
-query' bs q = filter matchBook bs
-  where clean   t = T.toLower (T.filter isValid t)
-        isValid   = (||) <$> isSpace <*> isAlphaNum
-        split   s = T.split isSpace s
-        qTokens   = split (clean q)
-        matches s = qTokens `isInfixOf` split (clean s)
-        matchBook = (||) <$> views bookTitle  matches
-                         <*> views bookAuthor matches
+query' books q = filter matchBook books
+  where qtok      = tokens q
+        matches s = qtok `isInfixOf` tokens s
+        matchBook = (||) <$> matches . bookTitle
+                         <*> matches . bookAuthor
 
 -- | @query'@ that runs inside a Monad that contains the BookList. The first
--- argument is a lens over the BookList that chooses which list of books
--- (to-be-read or reading) is to be queried.
-query :: (MonadState BookList m) => Lens' BookList [Book] -> Text -> m [Book]
-query l q = uses l (`query'` q)
+-- argument is a selector that returns a list of books to query, given the
+-- book list.
+query :: (MonadState BookList m, Applicative m) => (BookList -> [Book]) -> Text -> m [Book]
+query sel q = query' <$> getList sel <*> pure q
 
 -- | Similar to @query@ except that only one result is expected. If the query
 -- results in no books, or more than one books, an error is thrown.
-queryOne :: Lens' BookList [Book] -> Text -> BooksM Book
-queryOne l q = BM $ do
-    bs <- query l q
+queryOne :: (BookList -> [Book]) -> Text -> BooksM Book
+queryOne sel q = BM $ do
+    bs <- query sel q
     case bs of
-        []  -> left ("Unable to find a book matching the query: " <> T.unpack q)
-        [b] -> return b
+        []  -> left [st|Unable to find book matching query "#{q}"|]
+        [b] -> right b
         _   -> do putLn "The query matched:"
                   printBookList bs
                   left "Please refine the query."
 
+-- | Fetch from the book list the list defined by the given selector.
+getList :: (MonadState BookList m, Functor m) => (BookList -> [Book]) -> m [Book]
+getList sel = sel <$> get
+
 -- | Get the book currently being read. If the reading list is empty, or there
--- are greater than one books in it, then an error is thrown.
+-- are greater than one books in it, an error is thrown.
 getReading :: BooksM Book
 getReading = BM $ do
-    bs <- use blReading
+    bs <- getList blReading
     case bs of
         []  -> left "You are not reading any book at the moment."
-        [b] -> return b
+        [b] -> right b
         _   -> do putLn "You are currently reading:"
                   printBookList bs
                   left "Please provide a query."
@@ -131,37 +159,39 @@ putLn = liftIO . TIO.putStrLn
 -- Formatting:
 
 formatBook :: Book -> Text
-formatBook b = [st|#{title} by #{author}|]
-    where title  = b^.bookTitle
-          author = b^.bookAuthor
+formatBook Book{..} = [st|#{bookTitle} by #{bookAuthor}|]
 
 printBookList :: (MonadIO m) => [Book] -> m ()
-printBookList bs = liftIO $ mapM_ TIO.putStrLn (formatBookList bs)
+printBookList bs = mapM_ putLn (formatBookList bs)
 
 formatBookList :: [Book] -> [Text]
 formatBookList bs = map format pairs
-  where nats = 1:map (+1) nats
-        pairs = zip nats bs
-        numLength = length . show
-        maxNumLength =  numLength (length bs)
-        format (i, b) = [st|#{show i}. #{extraSpaces <> author} - #{title}|]
-          where extraSpaces = T.replicate (maxNumLength - numLength i) " "
-                author = b ^. bookAuthor
-                title  = b ^. bookTitle
+  where
+    pairs         = zip [1..] bs
+    numLen        = length . show
+    maxNumLen     =  numLen (length bs)
+    format (i, b) = [st|#{show i}. #{extraSpaces <> author} - #{title}|]
+        where extraSpaces = T.replicate (maxNumLen - numLen i) " "
+              author = bookAuthor b
+              title  = bookTitle  b
 
 -- Commands:
 
 status :: BooksM ()
 status = do
-    putLn "Reading:"
-    use blReading >>= printBookList
+    reading <- getList blReading
+    unless (null reading) $ do
+        putLn "Reading:"
+        printBookList reading
 
-    tbrCount <- uses blToBeRead length
+    tbrCount <- length <$> getList blToBeRead
     putLn [st|There are #{show tbrCount} books to be read.|]
 
 finish :: Book -> BooksM ()
-finish b = do blReading %= filter (/= b)
+finish b = do modify step
               putLn [st|Finished reading #{formatBook b}|]
+  where
+    step bl@(BookList{..}) = bl {blReading = filter (/= b) blReading}
 
 search :: Text -> BooksM ()
 search q = do
@@ -179,51 +209,64 @@ search q = do
         putLn "To be read:"
         printBookList toBeRead
 
-    when ((readCount, tbrCount) == (0, 0)) $ do
+    when ((readCount, tbrCount) == (0, 0)) $
         putLn "No such books found."
 
 list :: BooksM ()
 list = do
-    reading <- use blReading
-    toBeRead <- use blToBeRead
+    reading  <- getList blReading
+    toBeRead <- getList blToBeRead
 
-    when (length reading > 0) $ do
+    unless (null reading) $ do
         putLn "Reading:"
         printBookList reading
-        when (length toBeRead > 0) (putLn "")
+        unless (null toBeRead) (putLn "")
 
-    when (length toBeRead > 0) $ do
+    unless (null toBeRead) $ do
         putLn "To be read:"
         printBookList toBeRead
 
 pick :: Text -> BooksM ()
 pick q = do
     b <- queryOne blToBeRead q
-    blReading <>= [b]
-    blToBeRead %= filter (/= b)
+    modify $ \bl@(BookList{..}) ->
+        bl { blReading  = b:blReading
+           , blToBeRead = filter (/= b) blToBeRead }
     putLn [st|Started reading #{formatBook b}.|]
 
 add :: Text -> Text -> BooksM ()
-add title author = do
-    blToBeRead <>= [book]
+add title author = BM $ do
+    reading <- getList blReading
+    toBeRead <- getList blToBeRead
+    let readMatches = query' reading  title  `intersect`
+                      query' reading author
+        tbrMatches  = query' toBeRead  title `intersect`
+                      query' toBeRead author
+    unless (null $ readMatches <> tbrMatches) $
+        left "You have already added that book."
+    modify $ \bl@(BookList{..}) ->
+        bl { blToBeRead = book:blToBeRead }
     putLn [st|Added #{formatBook book} to the reading list.|]
   where book = Book author title
 
 remove :: Text -> BooksM ()
 remove q = do
     b <- queryOne blToBeRead q
-    blToBeRead %= filter (/= b)
+    modify $ \bl@(BookList{..}) ->
+        bl { blToBeRead = filter (/= b) blToBeRead }
     putLn [st|Removed #{formatBook b} from the reading list.|]
 
 stop :: Book -> BooksM ()
-stop b = do blReading  %= filter (/= b)
-            blToBeRead <>= [b]
-            putLn [st|Stopped redaing #{formatBook b}.|]
+stop b = BM $ do
+    modify $ \bl@(BookList{..}) ->
+        bl { blReading = filter (/= b) blReading
+           , blToBeRead = b:blToBeRead }
+    putLn [st|Stopped reading #{formatBook b}.|]
 
 -- Argument parsing and dispatch:
 
-str :: Monad m => String -> m Text
-str = return . T.pack
+text :: Monad m => String -> m Text
+text = return . T.pack
 
 -- | Dispatch the correct subcommand based on the options.
 dispatch :: Argument -> IO ()
@@ -257,13 +300,13 @@ data Argument = Argument { argFile    :: FilePath
 addParser, finishParser, stopParser, pickParser, removeParser, searchParser
     :: Parser Command
 
-addParser    = Add    <$> argument str (metavar "TITLE")
-                      <*> argument str (metavar "AUTHOR")
-finishParser = Finish <$> optional (argument str (metavar "QUERY"))
-stopParser   = Stop   <$> optional (argument str (metavar "QUERY"))
-pickParser   = Pick   <$> argument str (metavar "QUERY")
-removeParser = Remove <$> argument str (metavar "QUERY")
-searchParser = Search <$> argument str (metavar "QUERY")
+addParser    = Add    <$> argument text (metavar "TITLE")
+                      <*> argument text (metavar "AUTHOR")
+finishParser = Finish <$> optional (argument text (metavar "QUERY"))
+stopParser   = Stop   <$> optional (argument text (metavar "QUERY"))
+pickParser   = Pick   <$> argument text (metavar "QUERY")
+removeParser = Remove <$> argument text (metavar "QUERY")
+searchParser = Search <$> argument text (metavar "QUERY")
 
 -- | Parser for all subcommands.
 commandParser :: Parser Command

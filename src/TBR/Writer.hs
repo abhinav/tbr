@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings, RecordWildCards #-}
-module Writer (writeDocument) where
+module TBR.Writer (writeDocument) where
 
-import           Types
+import           TBR.Types
 import qualified Data.Text                 as T
 import           Data.Text.Lazy            (Text)
 import           Control.Monad.State

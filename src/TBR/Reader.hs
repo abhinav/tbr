@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Reader (parseDocument) where
+module TBR.Reader (parseDocument) where
 
-import Types
+import TBR.Types
 import Data.Text (Text, pack)
 import Control.Monad (void)
 import Control.Applicative ((<|>), (<$>), (<*), (<*>))

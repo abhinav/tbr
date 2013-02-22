@@ -1,4 +1,4 @@
-module Types
+module TBR.Types
     ( Author
     , Header
     , Book

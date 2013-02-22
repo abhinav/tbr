@@ -17,9 +17,9 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
 import System.FilePath ((</>), takeDirectory)
 import Control.Monad.State.Class (MonadState)
-import Script (ScriptT, runScriptT, scriptIO)
 import Control.Monad.State (StateT, runStateT)
 import Control.Monad.IO.Class (MonadIO(liftIO))
+import TBR.Script (ScriptT, runScriptT, scriptIO)
 import Data.Aeson (FromJSON, ToJSON, encode, decode)
 import Control.Applicative ((<$>), (<*>), pure, optional)
 import Control.Error (note, hoistEither, catchT, right, left)

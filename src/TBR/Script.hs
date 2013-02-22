@@ -1,4 +1,4 @@
-module Script (ScriptT, runScriptT, scriptIO) where
+module TBR.Script (ScriptT, runScriptT, scriptIO) where
 
 import System.Exit (exitFailure)
 import Control.Monad.IO.Class (MonadIO(liftIO))

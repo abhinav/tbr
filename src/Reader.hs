@@ -1,35 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Parse
-    ( document
-    , Author
-    , Header
-    , Book
-    , Entry(..)
-    , Block(..)
-    ) where
+module Reader (parseDocument) where
 
+import Types
 import Data.Text (Text, pack)
 import Control.Monad (void)
 import Control.Applicative ((<|>), (<$>), (<*), (<*>))
 import Data.Attoparsec.Text
-    ( Parser, skipMany, endOfLine, takeTill, isEndOfLine, endOfLine, manyTill
-    , anyChar, string, skipSpace, many1, char, decimal, satisfy, space, count
-    , sepBy, many', option )
 
--- TODO move types to Types module
-
-type Author = Text
-type Header = Text
-type Book   = Text
-
-data Entry = Entry { entryAuthor :: Author
-                   , entryBooks  :: [Book] }
-        deriving (Show, Eq)
-
-data Block = Block { blockHeader  :: Header
-                   , blockEntries :: [Entry] }
-        deriving (Show, Eq)
-
+-- | Skip a bunch of newlines.
 skipLines :: Parser ()
 skipLines = skipMany endOfLine
 
@@ -69,9 +47,6 @@ block :: Parser Block
 block = Block <$> (header <* skipLines)
               <*> many' entry
 
-document :: Parser [Block]
-document = option () (void comment)
-        >> skipLines
-        >> many1 block
-
-
+parseDocument :: Parser Document
+parseDocument = fmap Document $
+    option () (void comment) >> skipLines >> many1 block

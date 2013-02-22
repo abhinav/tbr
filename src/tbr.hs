@@ -2,27 +2,27 @@
              QuasiQuotes, FlexibleContexts #-}
 module Main (main) where
 
-import qualified TBR.Types                 as TBR
+import qualified TBR.Types              as TBR
 import           TBR.Script
 import           TBR.Reader
 import           TBR.Writer
 
-import           Data.Text                 (Text)
-import           Data.List                 (isInfixOf, sortBy, groupBy, intersect)
-import           Data.Char                 (isAlphaNum, isSpace)
-import qualified Data.Text                 as T
-import           Data.Default              (Default(def))
-import qualified Data.Text.IO              as TIO
-import           Control.Error             (hoistEither, catchT, right, left)
-import           Control.Monad             (when, unless)
-import           System.FilePath           ((</>), takeDirectory)
-import           System.Directory          (getAppUserDataDirectory, createDirectoryIfMissing)
-import qualified Data.Text.Lazy.IO         as TLIO
+import           Data.Text              (Text)
+import           Data.List              (isInfixOf, sortBy, groupBy,
+                                         intersect)
+import           Data.Char              (isAlphaNum, isSpace)
+import qualified Data.Text              as T
+import           Data.Default
+import qualified Data.Text.IO           as TIO
+import           Control.Error          (hoistEither, catchT, right, left)
+import           Control.Monad          (when, unless)
+import           System.FilePath        ((</>), takeDirectory)
+import           System.Directory
+import qualified Data.Text.Lazy.IO      as TLIO
 import           Options.Applicative
-import           Control.Monad.State       (StateT, runStateT)
-import           Text.Shakespeare.Text     (st)
+import           Control.Monad.State
+import           Text.Shakespeare.Text  (st)
 import           Control.Monad.IO.Class
-import           Control.Monad.State.Class
 
 data Book = Book { bookAuthor :: Text
                  , bookTitle  :: Text }

@@ -92,7 +92,10 @@ status = do
         printBookList reading
 
     tbrCount <- length <$> getList blToBeRead
-    putLn [st|There are #{show tbrCount} books to be read.|]
+    lowCount <- length <$> getList blLowPriority
+
+    putLn $ [st|There are #{show $ tbrCount + lowCount} (#{show lowCount}|]
+         <> [st| low priority) books to be read.|]
 
 finish :: Book -> BooksM ()
 finish b = do modify step
@@ -102,27 +105,41 @@ finish b = do modify step
 
 search :: Text -> BooksM ()
 search q = do
-    reading  <- query blReading  q
-    toBeRead <- query blToBeRead q
+    reading  <- query blReading     q
+    toBeRead <- query blToBeRead    q
+    lowPrior <- query blLowPriority q
 
     let readCount = length reading
         tbrCount  = length toBeRead
+        lowCount  = length lowPrior
 
     when (readCount > 0) $ do
         putLn "Reading:"
         printBookList reading
 
     when (tbrCount > 0) $ do
-        putLn "To be read:"
+        putLn "To Be Read:"
         printBookList toBeRead
 
-    when ((readCount, tbrCount) == (0, 0)) $
+    when (lowCount > 0) $ do
+        putLn "Low Priority:"
+        printBookList lowPrior
+
+    when ((readCount, tbrCount, lowCount) == (0, 0, 0)) $
         putLn "No such books found."
+
+later :: Text -> BooksM ()
+later q = do
+    b <- queryOne blToBeRead q
+    modify $ \bl@BookList{..} ->
+        bl { blToBeRead    = filter (/= b) blToBeRead
+           , blLowPriority = b:blLowPriority }
 
 list :: BooksM ()
 list = do
     reading  <- getList blReading
     toBeRead <- getList blToBeRead
+    lowPrior <- getList blLowPriority
 
     unless (null reading) $ do
         putLn "Reading:"
@@ -130,37 +147,46 @@ list = do
         unless (null toBeRead) (putLn "")
 
     unless (null toBeRead) $ do
-        putLn "To be read:"
+        putLn "To Be Read:"
         printBookList toBeRead
+        unless (null lowPrior) (putLn "")
+
+    unless (null lowPrior) $ do
+        putLn "Low Priority:"
+        printBookList lowPrior
 
 pick :: Text -> BooksM ()
 pick q = do
-    b <- queryOne blToBeRead q
+    b <- queryOne ((<>) <$> blToBeRead <*> blLowPriority) q
     modify $ \bl@(BookList{..}) ->
-        bl { blReading  = b:blReading
-           , blToBeRead = filter (/= b) blToBeRead }
+        bl { blReading     = b:blReading
+           , blToBeRead    = filter (/= b) blToBeRead
+           , blLowPriority = filter (/= b) blLowPriority }
     putLn [st|Started reading #{formatBook b}.|]
 
 add :: Text -> Text -> BooksM ()
 add title author = do
-    reading <- getList blReading
-    toBeRead <- getList blToBeRead
-    let readMatches = query' reading  title  `intersect`
-                      query' reading author
-        tbrMatches  = query' toBeRead  title `intersect`
-                      query' toBeRead author
-    unless (null $ readMatches <> tbrMatches) $
+    reading     <- getList blReading
+    toBeRead    <- getList blToBeRead
+    lowPriority <- getList blLowPriority
+    let readMatches = matches reading
+        tbrMatches  = matches toBeRead
+        lowMatches  = matches lowPriority
+    unless (null $ readMatches <> tbrMatches <> lowMatches) $
         err "You have already added that book."
     modify $ \bl@(BookList{..}) ->
         bl { blToBeRead = book:blToBeRead }
     putLn [st|Added #{formatBook book} to the reading list.|]
   where book = Book author title
+        matches bl = query' bl  title `intersect`
+                     query' bl author
 
 remove :: Text -> BooksM ()
 remove q = do
-    b <- queryOne blToBeRead q
+    b <- queryOne ((<>) <$> blToBeRead <*> blLowPriority) q
     modify $ \bl@(BookList{..}) ->
-        bl { blToBeRead = filter (/= b) blToBeRead }
+        bl { blToBeRead    = filter (/= b) blToBeRead
+           , blLowPriority = filter (/= b) blLowPriority }
     putLn [st|Removed #{formatBook b} from the reading list.|]
 
 stop :: Book -> BooksM ()
@@ -182,6 +208,7 @@ dispatch args = runBooksM (argFile args) $
   case argCommand args of
     Add{..}    -> add addTitle addAuthor
     Finish{..} -> maybe getReading (queryOne blReading) finishQuery >>= finish
+    Later{..}  -> later laterQuery
     List       -> list
     Pick{..}   -> pick pickQuery
     Remove{..} -> remove removeQuery
@@ -193,6 +220,7 @@ dispatch args = runBooksM (argFile args) $
 data Command = Add { addTitle :: Text
                    , addAuthor  :: Text }
              | Finish { finishQuery :: Maybe Text }
+             | Later  { laterQuery :: Text }
              | List
              | Pick   { pickQuery   :: Text }
              | Remove { removeQuery :: Text }
@@ -205,22 +233,27 @@ data Argument = Argument { argFile    :: FilePath
                          , argCommand :: Command
                          }
 
-addParser, finishParser, stopParser, pickParser, removeParser, searchParser
-    :: Parser Command
+addParser, finishParser, laterParser, stopParser, pickParser, removeParser,
+    searchParser :: Parser Command
+
+queryParser :: Parser Text
+queryParser = argument text (metavar "QUERY")
 
 addParser    = Add    <$> argument text (metavar "TITLE")
                       <*> argument text (metavar "AUTHOR")
-finishParser = Finish <$> optional (argument text (metavar "QUERY"))
+finishParser = Finish <$> optional queryParser
+laterParser  = Later  <$>          queryParser
 stopParser   = Stop   <$> optional (argument text (metavar "QUERY"))
-pickParser   = Pick   <$> argument text (metavar "QUERY")
-removeParser = Remove <$> argument text (metavar "QUERY")
-searchParser = Search <$> argument text (metavar "QUERY")
+pickParser   = Pick   <$>          queryParser
+removeParser = Remove <$>          queryParser
+searchParser = Search <$>          queryParser
 
 -- | Parser for all subcommands.
 commandParser :: Parser Command
 commandParser = subparser $
     command "add"    (info addParser     $ progDesc "Add a book.")
  <> command "finish" (info finishParser  $ progDesc "Mark a book finished.")
+ <> command "later"  (info laterParser   $ progDesc "Mark a book as low-priority.")
  <> command "list"   (info (pure List)   $ progDesc "List all books to be read.")
  <> command "pick"   (info pickParser    $ progDesc "Start reading a book.")
  <> command "remove" (info removeParser  $ progDesc "Remove a book.")

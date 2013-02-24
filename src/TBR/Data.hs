@@ -1,4 +1,5 @@
-{-# LANGUAGE OverloadedStrings, QuasiQuotes, RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings, QuasiQuotes, RecordWildCards,
+             ScopedTypeVariables #-}
 module TBR.Data
     ( Book(..)
     , BookList(..)
@@ -33,17 +34,20 @@ instance Default BookList where
 
 -- | Convert a @Document@ into a @BookList@. Throws an error if the three
 -- sections are absent.
-documentToBookList :: (Monad m, Functor m) => TBR.Document -> ScriptT m BookList
+documentToBookList
+    :: forall m. (Monad m, Functor m)
+    => TBR.Document
+    -> ScriptT m BookList
 documentToBookList TBR.Document{..} = BookList
                                   <$> blockBooks "Reading"
                                   <*> blockBooks "To be read"
                                   <*> blockBooks "Low priority"
   where
-    blockBooks :: (Monad m, Functor m) => Text -> ScriptT m [Book]
+    blockBooks :: Text -> ScriptT m [Book]
     blockBooks name = concatMap entryToBooks <$> lookupBlock name
 
     -- Get the entries for the block with the given name or fail.
-    lookupBlock :: (Monad m, Functor m) => Text -> ScriptT m [TBR.Entry]
+    lookupBlock :: Text -> ScriptT m [TBR.Entry]
     lookupBlock name = 
         case filter (match . TBR.blockHeader) documentBlocks of
             []  -> left [st|Could not find the section: #{name}|]

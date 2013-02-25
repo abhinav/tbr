@@ -1,0 +1,37 @@
+name          : tbr
+version       : 0.1.0.0
+synopsis      : Tool to manage my reading list.
+description   : A command line tool to help me maintain my reading list in a
+                readable format.
+license       : MIT
+license-file  : LICENSE
+author        : Abhinav Gupta
+maintainer    : mail@abhinavg.net
+category      : Utility
+build-type    : Simple
+cabal-version : >=1.8
+
+executable tbr
+  hs-source-dirs : src
+  main-is        : tbr.hs
+  ghc-options    : -Wall 
+  other-modules  : TBR.Data
+                 , TBR.Monad
+                 , TBR.Reader
+                 , TBR.Script
+                 , TBR.Types
+                 , TBR.Util
+                 , TBR.Writer
+  build-depends  : base
+                 , attoparsec            >= 0.10
+                 , data-default          >= 0.5
+                 , directory             >= 1.2
+                 , either                >= 3.1
+                 , errors                >= 1.3
+                 , filepath              >= 1.3
+                 , ghc-prim
+                 , mtl                   >= 2.1
+                 , optparse-applicative  >= 0.5
+                 , shakespeare-text      >= 1.0
+                 , text                  >= 0.11
+                 , transformers          >= 0.3

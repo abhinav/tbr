@@ -11,29 +11,26 @@
 :   Support changing the low-priority list.
 
 [ ]
-:   Support arbitrary numbers of lists.
-:   Interface may need to be re-done.
+:   Support arbitrary numbers of lists instead of just the three. Interface
+    may need to be re-done.
 
 [ ]
 :   Reduce duplication caused by two book-list types.
 
 [ ]
-:   Get rid of Shakespeare text dependency
+:   Remove shakespeare-text dependency.
 
 [ ]
-:   Tests
+:   Tests.
 
 [ ]
-:   Remove unused libraries from cabal file.
+:   Capitalize author names and book names.
 
 [ ]
-:   Normalize author names and book names.
-
-[ ]
-:   Config file to store location of TBR.
-:   Probably use [Configurator][] for this.
+:   Allow changing the location of the book list. Probably use
+    [Configurator][] for this.
 
   [Configurator]: http://hackage.haskell.org/package/configurator
 
 [ ]
-:   Support for numeric selectors
+:   Support for numeric selectors based on positions in the list.

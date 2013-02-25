@@ -2,9 +2,10 @@
 module TBR.Reader (parseDocument) where
 
 import TBR.Types
-import Data.Text (Text, pack)
-import Control.Monad (void)
-import Control.Applicative ((<|>), (<$>), (<*), (<*>))
+
+import Data.Text            (Text, pack)
+import Control.Monad        (void)
+import Control.Applicative
 import Data.Attoparsec.Text
 
 -- | Skip a bunch of newlines.

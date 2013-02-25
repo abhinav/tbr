@@ -10,6 +10,7 @@ module TBR.Data
 import           TBR.Util
 import qualified TBR.Types              as TBR
 import           TBR.Script
+
 import           Data.Text              (Text)
 import           Data.List              (sortBy, groupBy)
 import           Data.Default

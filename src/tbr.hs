@@ -243,7 +243,7 @@ addParser    = Add    <$> argument text (metavar "TITLE")
                       <*> argument text (metavar "AUTHOR")
 finishParser = Finish <$> optional queryParser
 laterParser  = Later  <$>          queryParser
-stopParser   = Stop   <$> optional (argument text (metavar "QUERY"))
+stopParser   = Stop   <$> optional queryParser
 pickParser   = Pick   <$>          queryParser
 removeParser = Remove <$>          queryParser
 searchParser = Search <$>          queryParser

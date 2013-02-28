@@ -9,11 +9,14 @@ import           TBR.Monad
 import           Data.Text              (Text)
 import           Data.List              (isInfixOf, intersect)
 import qualified Data.Text              as T
+import           Control.Monad          (unless, when)
 import           System.FilePath        ((</>))
 import           System.Directory
 import           Options.Applicative
-import           Control.Monad.State
+import           Control.Monad.State    (get, modify)
+import           Control.Monad.Writer   (execWriter, tell)
 import           Text.Shakespeare.Text  (st)
+import           Control.Monad.IO.Class (MonadIO)
 
 --------------------------------------------------------------------------------
 -- Operations inside the BooksM monad
@@ -250,16 +253,18 @@ searchParser = Search <$>          queryParser
 
 -- | Parser for all subcommands.
 commandParser :: Parser Command
-commandParser = subparser $
-    command "add"    (info addParser     $ progDesc "Add a book.")
- <> command "finish" (info finishParser  $ progDesc "Mark a book finished.")
- <> command "later"  (info laterParser   $ progDesc "Mark a book as low-priority.")
- <> command "list"   (info (pure List)   $ progDesc "List all books to be read.")
- <> command "pick"   (info pickParser    $ progDesc "Start reading a book.")
- <> command "remove" (info removeParser  $ progDesc "Remove a book.")
- <> command "search" (info searchParser  $ progDesc "Search for a book in the list.")
- <> command "status" (info (pure Status) $ progDesc "Show reading status.")
- <> command "stop"   (info stopParser    $ progDesc "Stop reading a book.")
+commandParser = subparser . execWriter $ do
+    cmd addParser     "add"    "Add a book."
+    cmd finishParser  "finish" "Mark a book finished."
+    cmd laterParser   "later"  "Mark a book as low-priority."
+    cmd (pure List)   "list"   "List all books to be read."
+    cmd pickParser    "pick"   "Start reading a book."
+    cmd removeParser  "remove" "Remove a book."
+    cmd searchParser  "search" "Search for a book in the list."
+    cmd (pure Status) "status" "Show reading status."
+    cmd stopParser    "stop"   "Stop reading a book."
+  where
+    cmd parser name desc = tell $ command name (info parser $ progDesc desc)
 
 -- | Build the complete command line argument parser.
 getArgumentParser :: IO (Parser Argument)

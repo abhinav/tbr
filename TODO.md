@@ -18,9 +18,6 @@
 :   Reduce duplication caused by two book-list types.
 
 [ ]
-:   Remove shakespeare-text dependency.
-
-[ ]
 :   Tests.
 
 [ ]

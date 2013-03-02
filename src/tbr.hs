@@ -2,14 +2,14 @@
              QuasiQuotes, FlexibleContexts #-}
 module Main (main) where
 
-import           TBR.Data
+import           TBR.Types
 import           TBR.Util
 import           TBR.Monad
 
 import           Data.Text              (Text)
 import           Data.List              (isInfixOf, intersect)
 import qualified Data.Text              as T
-import           Control.Monad          (unless, when)
+import           Control.Monad          (unless, forM_)
 import           System.FilePath        ((</>))
 import           System.Directory
 import           Options.Applicative
@@ -64,6 +64,45 @@ getReading = do
                   printBookList bs
                   err "Please provide a query."
 
+-- | Get all books in all lists.
+allBooks :: BookList -> [Book]
+allBooks BookList{..} = blReading <> blToBeRead <> concatMap snd blExtra
+
+getAllBooks :: BooksM [Book]
+getAllBooks = allBooks <$> get
+
+modifyReading, modifyToBeRead :: ([Book] -> [Book]) -> BooksM ()
+
+modifyReading  f = modify $ \bl@BookList{..} ->
+                        bl {blReading  = f blReading }
+modifyToBeRead f = modify $ \bl@BookList{..} ->
+                        bl {blToBeRead = f blToBeRead}
+
+-- | Get the list of books belonging to the given extra list.
+getExtraList :: Text -> BooksM (Text, [Book])
+getExtraList name = do
+    extra <- blExtra <$> get
+    case filter (matches . fst) extra of
+        [l] -> return l
+        _   -> err [st|List with name "#{name}" does not exist.|]
+  where  nametoks  = tokens name
+         matches s = nametoks `isInfixOf` tokens s
+
+-- | Modify the list of books belonging to the given extra list.
+modifyExtraList :: Text -> ([Book] -> [Book]) -> BooksM ()
+modifyExtraList name f = modifyExtraLists $ \(n, bs) ->
+    if tokens name `isInfixOf` tokens n
+    then f bs
+    else bs
+
+modifyExtraLists :: ((Text, [Book]) -> [Book]) -> BooksM ()
+modifyExtraLists f = modify $ \bl@BookList{..} ->
+    bl { blExtra = map fun blExtra }
+  where fun l@(n, _) = (n, f l)
+
+getExtraLists :: BooksM [Book]
+getExtraLists = concatMap snd . blExtra <$> get
+
 --------------------------------------------------------------------------------
 -- Formatting
 
@@ -94,109 +133,93 @@ status = do
         putLn "Reading:"
         printBookList reading
 
-    tbrCount <- length <$> getList blToBeRead
-    lowCount <- length <$> getList blLowPriority
+    tbrCount   <- length <$> getList blToBeRead
+    extraCount <- length <$> getExtraLists
 
-    putLn $ [st|There are #{show $ tbrCount + lowCount} (#{show lowCount}|]
-         <> [st| low priority) books to be read.|]
+    putLn $ [st|There are #{show $ tbrCount + extraCount} |]
+         <> [st|(#{show extraCount} extra) books to be read.|]
 
-finish :: Book -> BooksM ()
-finish b = do modify step
-              putLn [st|Finished reading #{formatBook b}|]
-  where
-    step bl@(BookList{..}) = bl {blReading = filter (/= b) blReading}
+finish :: Maybe Text -> BooksM ()
+finish mq = do
+    b <- maybe getReading (queryOne blReading) mq
+    modifyReading (filter (/= b))
+    putLn [st|Finished reading #{formatBook b}|]
 
-search :: Text -> BooksM ()
-search q = do
-    reading  <- query blReading     q
-    toBeRead <- query blToBeRead    q
-    lowPrior <- query blLowPriority q
+search :: Text -> Maybe Text -> BooksM ()
+search q lname = do
+    range <- maybe (allBs <$> get) (fmap snd . getExtraList) lname
+    matches <- query (const range) q
+    printBookList matches
+ where allBs BookList{..} = blToBeRead <> concatMap snd blExtra
 
-    let readCount = length reading
-        tbrCount  = length toBeRead
-        lowCount  = length lowPrior
+list :: Maybe Text -> BooksM ()
+list = maybe listAll listOne
+ where
+    printSection title lst =
+        unless (null lst) $ do
+            putLn title
+            printBookList lst
 
-    when (readCount > 0) $ do
-        putLn "Reading:"
-        printBookList reading
+    listOne :: Text -> BooksM ()
+    listOne n = getExtraList n >>= uncurry printSection 
 
-    when (tbrCount > 0) $ do
-        putLn "To Be Read:"
-        printBookList toBeRead
+    listAll :: BooksM ()
+    listAll = do
+        reading  <- getList blReading
+        toBeRead <- getList blToBeRead
+        extras   <- blExtra <$> get
 
-    when (lowCount > 0) $ do
-        putLn "Low Priority:"
-        printBookList lowPrior
+        unless (null reading) $ do
+            printSection "Reading" reading
+            unless (null toBeRead) (putLn "")
 
-    when ((readCount, tbrCount, lowCount) == (0, 0, 0)) $
-        putLn "No such books found."
+        unless (null toBeRead) $ do
+            printSection "To Be Read" toBeRead
+            unless (null extras) (putLn "")
 
-later :: Text -> BooksM ()
-later q = do
-    b <- queryOne blToBeRead q
-    modify $ \bl@BookList{..} ->
-        bl { blToBeRead    = filter (/= b) blToBeRead
-           , blLowPriority = b:blLowPriority }
+        unless (null extras) . runCounterT $
+            forM_ extras $ \(n, l) -> do
+                count <- counter
+                unless (count == 1) $ putLn ""
+                printSection n l
 
-list :: BooksM ()
-list = do
-    reading  <- getList blReading
-    toBeRead <- getList blToBeRead
-    lowPrior <- getList blLowPriority
-
-    unless (null reading) $ do
-        putLn "Reading:"
-        printBookList reading
-        unless (null toBeRead) (putLn "")
-
-    unless (null toBeRead) $ do
-        putLn "To Be Read:"
-        printBookList toBeRead
-        unless (null lowPrior) (putLn "")
-
-    unless (null lowPrior) $ do
-        putLn "Low Priority:"
-        printBookList lowPrior
-
-pick :: Text -> BooksM ()
-pick q = do
-    b <- queryOne ((<>) <$> blToBeRead <*> blLowPriority) q
-    modify $ \bl@(BookList{..}) ->
-        bl { blReading     = b:blReading
-           , blToBeRead    = filter (/= b) blToBeRead
-           , blLowPriority = filter (/= b) blLowPriority }
+pick :: Text -> Maybe Text -> BooksM ()
+pick q lname = do
+    range <- maybe (allBs <$> get) (fmap snd . getExtraList) lname
+    b <- queryOne (const range) q
+    modifyReading (b:)
+    modifyToBeRead (filter (/= b))
+    modifyExtraLists (filter (/= b) . snd)
     putLn [st|Started reading #{formatBook b}.|]
+ where allBs BookList{..} = blToBeRead <> concatMap snd blExtra
 
-add :: Text -> Text -> BooksM ()
-add title author = do
-    reading     <- getList blReading
-    toBeRead    <- getList blToBeRead
-    lowPriority <- getList blLowPriority
-    let readMatches = matches reading
-        tbrMatches  = matches toBeRead
-        lowMatches  = matches lowPriority
-    unless (null $ readMatches <> tbrMatches <> lowMatches) $
+add :: Text -> Text -> Maybe Text -> BooksM ()
+add title author lname = do
+    books <- getAllBooks
+    unless (null $ matches books) $
         err "You have already added that book."
-    modify $ \bl@(BookList{..}) ->
-        bl { blToBeRead = book:blToBeRead }
+    maybe modifyToBeRead modifyExtraList lname (book:)
     putLn [st|Added #{formatBook book} to the reading list.|]
   where book = Book author title
         matches bl = query' bl  title `intersect`
                      query' bl author
 
-remove :: Text -> BooksM ()
-remove q = do
-    b <- queryOne ((<>) <$> blToBeRead <*> blLowPriority) q
-    modify $ \bl@(BookList{..}) ->
-        bl { blToBeRead    = filter (/= b) blToBeRead
-           , blLowPriority = filter (/= b) blLowPriority }
+move :: Text -> Text -> BooksM ()
+move _ _ = undefined
+
+remove :: Text -> Maybe Text -> BooksM ()
+remove q lname = do
+    range <- maybe getAllBooks (fmap snd . getExtraList) lname
+    b <- queryOne (const range) q
+    modifyToBeRead (filter (/= b))
+    modifyExtraLists (filter (/= b) . snd)
     putLn [st|Removed #{formatBook b} from the reading list.|]
 
-stop :: Book -> BooksM ()
-stop b = do
-    modify $ \bl@(BookList{..}) ->
-        bl { blReading = filter (/= b) blReading
-           , blToBeRead = b:blToBeRead }
+stop :: Maybe Text -> Maybe Text -> BooksM ()
+stop q l = do
+    b <- maybe getReading (queryOne blReading) q
+    modifyReading (filter (/= b))
+    maybe modifyToBeRead modifyExtraList l (b:)
     putLn [st|Stopped reading #{formatBook b}.|]
 
 --------------------------------------------------------------------------------
@@ -209,55 +232,77 @@ text = return . T.pack
 dispatch :: Argument -> IO ()
 dispatch args = runBooksM (argFile args) $
   case argCommand args of
-    Add{..}    -> add addTitle addAuthor
-    Finish{..} -> maybe getReading (queryOne blReading) finishQuery >>= finish
-    Later{..}  -> later laterQuery
-    List       -> list
-    Pick{..}   -> pick pickQuery
-    Remove{..} -> remove removeQuery
-    Search{..} -> search searchQuery
+    Add{..}    -> add addTitle addAuthor addList
+    Finish{..} -> finish finishQuery
+    List{..}   -> list listList
+    Move{..}   -> move moveQuery moveList
+    Pick{..}   -> pick pickQuery pickList
+    Remove{..} -> remove removeQuery removeList
+    Search{..} -> search searchQuery searchList
     Status     -> status
-    Stop{..}   -> maybe getReading (queryOne blReading) stopQuery >>= stop
+    Stop{..}   -> stop stopQuery stopList
+    
         
 -- | Represents the subcommands offered by the program.
-data Command = Add { addTitle :: Text
-                   , addAuthor  :: Text }
+data Command = Add    { addTitle    :: Text
+                      , addAuthor   :: Text
+                      , addList     :: Maybe Text }
              | Finish { finishQuery :: Maybe Text }
-             | Later  { laterQuery :: Text }
-             | List
-             | Pick   { pickQuery   :: Text }
-             | Remove { removeQuery :: Text }
-             | Search { searchQuery :: Text }
+             | List   { listList    :: Maybe Text }
+             | Move   { moveQuery   :: Text
+                      , moveList    :: Text }
+             | Pick   { pickQuery   :: Text
+                      , pickList    :: Maybe Text }
+             | Remove { removeQuery :: Text
+                      , removeList  :: Maybe Text}
+             | Search { searchQuery :: Text
+                      , searchList  :: Maybe Text }
              | Status 
-             | Stop   { stopQuery   :: Maybe Text }
+             | Stop   { stopQuery   :: Maybe Text
+                      , stopList    :: Maybe Text }
 
 -- | Represents all the command line arguments accepted by the program.
 data Argument = Argument { argFile    :: FilePath
                          , argCommand :: Command
                          }
 
-addParser, finishParser, laterParser, stopParser, pickParser, removeParser,
-    searchParser :: Parser Command
+addParser, finishParser, listParser, moveParser, pickParser, removeParser,
+    searchParser, stopParser :: Parser Command
+
+listOption :: Parser (Maybe Text)
+listOption = optional $
+    nullOption $ reader (return . T.pack) <>
+               ( long "list"
+              <> short 'l'
+              <> metavar "LIST"
+              <> help "The target list." )
 
 queryParser :: Parser Text
 queryParser = argument text (metavar "QUERY")
 
 addParser    = Add    <$> argument text (metavar "TITLE")
                       <*> argument text (metavar "AUTHOR")
+                      <*>          listOption
 finishParser = Finish <$> optional queryParser
-laterParser  = Later  <$>          queryParser
-stopParser   = Stop   <$> optional queryParser
+listParser   = List   <$>          listOption
+moveParser   = Move   <$>          queryParser
+                      <*> argument text (metavar "LIST")
 pickParser   = Pick   <$>          queryParser
+                      <*>          listOption
 removeParser = Remove <$>          queryParser
+                      <*>          listOption
 searchParser = Search <$>          queryParser
+                      <*>          listOption
+stopParser   = Stop   <$> optional queryParser
+                      <*>          listOption
 
 -- | Parser for all subcommands.
 commandParser :: Parser Command
 commandParser = subparser . execWriter $ do
     cmd addParser     "add"    "Add a book."
     cmd finishParser  "finish" "Mark a book finished."
-    cmd laterParser   "later"  "Mark a book as low-priority."
-    cmd (pure List)   "list"   "List all books to be read."
+    cmd listParser    "list"   "List all books to be read."
+    cmd moveParser    "move"   "Move a book between lists."
     cmd pickParser    "pick"   "Start reading a book."
     cmd removeParser  "remove" "Remove a book."
     cmd searchParser  "search" "Search for a book in the list."
@@ -281,6 +326,7 @@ getArgumentParser = do
 main :: IO ()
 main = do
     parser <- getArgumentParser
-    dispatch =<< execParser (info (helper <*> parser)
-                                  ( fullDesc
-                                 <> header "A tool to maintain reading lists."))
+    dispatch =<< execParser
+                    (info (helper <*> parser)
+                          ( fullDesc
+                         <> header "A tool to maintain reading lists."))

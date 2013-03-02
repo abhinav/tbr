@@ -30,7 +30,7 @@ newln :: TextBuilder ()
 newln = void $ tell "\n"
 
 writeDocument :: Document -> Text
-writeDocument = runTextBuilder . mapM_ writeBlocks . documentBlocks
+writeDocument = runTextBuilder . mapM_ writeBlocks
 
 writeBlocks :: Block -> TextBuilder ()
 writeBlocks Block{..} = void $ 
@@ -39,7 +39,7 @@ writeBlocks Block{..} = void $
     >> newln
   where numEntries = fromIntegral $ length blockEntries
 
-writeHeader :: Header -> TextBuilder ()
+writeHeader :: T.Text -> TextBuilder ()
 writeHeader hdr = void $ tellText hdr      >> newln
                >> underline (T.length hdr) >> newln
   where underline n = tellText $ T.replicate (fromIntegral n) "="
@@ -59,7 +59,7 @@ writeEntry total Entry{..} = do
     numLen = length . show
     spaces = flip T.replicate " "
 
-    writeBook :: Book -> TextBuilder ()
+    writeBook :: T.Text -> TextBuilder ()
     writeBook b = void $ do
         tellText $ spaces (numLen total + 2)
         tell "-   "

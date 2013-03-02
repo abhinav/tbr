@@ -5,7 +5,7 @@ module TBR.Monad
     , err
     ) where
 
-import           TBR.Data
+import           TBR.Types
 import           TBR.Reader
 import           TBR.Writer
 import           TBR.Script

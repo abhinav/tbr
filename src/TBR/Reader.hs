@@ -23,7 +23,7 @@ comment = open >> (pack <$> manyTill anyChar close)
     where open  = string "<!--" >> skipSpace
           close = skipSpace >> string "-->"
 
-header :: Parser Header
+header :: Parser Text
 header = restOfLine <* many1 (char '=')
 
 entry :: Parser Entry
@@ -49,8 +49,7 @@ block = (Block <$> (header <* skipLines)
                <*> many' entry) <* skipLines
 
 document :: Parser Document
-document = fmap Document $
-    option () (void comment) >> skipLines >> many1 block
+document = option () (void comment) >> skipLines >> many1 block
 
 parseDocument :: Text -> Either String Document
 parseDocument = parseOnly document

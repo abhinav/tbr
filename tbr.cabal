@@ -15,8 +15,7 @@ executable tbr
   hs-source-dirs : src
   main-is        : tbr.hs
   ghc-options    : -Wall 
-  other-modules  : TBR.Data
-                 , TBR.Monad
+  other-modules  : TBR.Monad
                  , TBR.Reader
                  , TBR.Script
                  , TBR.Types

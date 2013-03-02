@@ -10,12 +10,12 @@
 [✓]
 :   Support changing the low-priority list.
 
-[ ]
+[✓]
 :   Support arbitrary numbers of lists instead of just the three. Interface
     may need to be re-done.
 
 [ ]
-:   Reduce duplication caused by two book-list types.
+:   Clean up tbr.hs
 
 [ ]
 :   Tests.

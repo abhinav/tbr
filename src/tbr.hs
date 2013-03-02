@@ -205,7 +205,14 @@ add title author lname = do
                      query' bl author
 
 move :: Text -> Text -> BooksM ()
-move _ _ = undefined
+move q lname = do
+    b <- queryOne allBs q
+    (lst, _) <- getExtraList lname
+    modifyToBeRead (filter (/= b))
+    modifyExtraLists (filter (/= b) . snd)
+    modifyExtraList lname (b:)
+    putLn [st|Moved #{formatBook b} to #{lst}|]
+ where allBs BookList{..} = blToBeRead <> concatMap snd blExtra
 
 remove :: Text -> Maybe Text -> BooksM ()
 remove q lname = do

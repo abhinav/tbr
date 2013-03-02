@@ -126,18 +126,17 @@ formatBookList bs = map format pairs
 --------------------------------------------------------------------------------
 -- Commands
 
-status :: BooksM ()
-status = do
-    reading <- getList blReading
-    unless (null reading) $ do
-        putLn "Reading:"
-        printBookList reading
+add :: Text -> Text -> Maybe Text -> BooksM ()
+add title author lname = do
+    books <- getAllBooks
+    unless (null $ matches books) $
+        err "You have already added that book."
+    maybe modifyToBeRead modifyExtraList lname (book:)
+    putLn [st|Added #{formatBook book} to the reading list.|]
+  where book = Book author title
+        matches bl = query' bl  title `intersect`
+                     query' bl author
 
-    tbrCount   <- length <$> getList blToBeRead
-    extraCount <- length <$> getExtraLists
-
-    putLn $ [st|There are #{show $ tbrCount + extraCount} |]
-         <> [st|(#{show extraCount} extra) books to be read.|]
 
 finish :: Maybe Text -> BooksM ()
 finish mq = do
@@ -145,12 +144,6 @@ finish mq = do
     modifyReading (filter (/= b))
     putLn [st|Finished reading #{formatBook b}|]
 
-search :: Text -> Maybe Text -> BooksM ()
-search q lname = do
-    range <- maybe (allBs <$> get) (fmap snd . getExtraList) lname
-    matches <- query (const range) q
-    printBookList matches
- where allBs BookList{..} = blToBeRead <> concatMap snd blExtra
 
 list :: Maybe Text -> BooksM ()
 list = maybe listAll listOne
@@ -183,26 +176,6 @@ list = maybe listAll listOne
                 unless (count == 1) $ putLn ""
                 printSection n l
 
-pick :: Text -> Maybe Text -> BooksM ()
-pick q lname = do
-    range <- maybe (allBs <$> get) (fmap snd . getExtraList) lname
-    b <- queryOne (const range) q
-    modifyReading (b:)
-    modifyToBeRead (filter (/= b))
-    modifyExtraLists (filter (/= b) . snd)
-    putLn [st|Started reading #{formatBook b}.|]
- where allBs BookList{..} = blToBeRead <> concatMap snd blExtra
-
-add :: Text -> Text -> Maybe Text -> BooksM ()
-add title author lname = do
-    books <- getAllBooks
-    unless (null $ matches books) $
-        err "You have already added that book."
-    maybe modifyToBeRead modifyExtraList lname (book:)
-    putLn [st|Added #{formatBook book} to the reading list.|]
-  where book = Book author title
-        matches bl = query' bl  title `intersect`
-                     query' bl author
 
 move :: Text -> Text -> BooksM ()
 move q lname = do
@@ -214,6 +187,18 @@ move q lname = do
     putLn [st|Moved #{formatBook b} to #{lst}|]
  where allBs BookList{..} = blToBeRead <> concatMap snd blExtra
 
+
+pick :: Text -> Maybe Text -> BooksM ()
+pick q lname = do
+    range <- maybe (allBs <$> get) (fmap snd . getExtraList) lname
+    b <- queryOne (const range) q
+    modifyReading (b:)
+    modifyToBeRead (filter (/= b))
+    modifyExtraLists (filter (/= b) . snd)
+    putLn [st|Started reading #{formatBook b}.|]
+ where allBs BookList{..} = blToBeRead <> concatMap snd blExtra
+
+
 remove :: Text -> Maybe Text -> BooksM ()
 remove q lname = do
     range <- maybe getAllBooks (fmap snd . getExtraList) lname
@@ -221,6 +206,29 @@ remove q lname = do
     modifyToBeRead (filter (/= b))
     modifyExtraLists (filter (/= b) . snd)
     putLn [st|Removed #{formatBook b} from the reading list.|]
+
+
+search :: Text -> Maybe Text -> BooksM ()
+search q lname = do
+    range <- maybe (allBs <$> get) (fmap snd . getExtraList) lname
+    matches <- query (const range) q
+    printBookList matches
+ where allBs BookList{..} = blToBeRead <> concatMap snd blExtra
+
+
+status :: BooksM ()
+status = do
+    reading <- getList blReading
+    unless (null reading) $ do
+        putLn "Reading:"
+        printBookList reading
+
+    tbrCount   <- length <$> getList blToBeRead
+    extraCount <- length <$> getExtraLists
+
+    putLn $ [st|There are #{show $ tbrCount + extraCount} |]
+         <> [st|(#{show extraCount} extra) books to be read.|]
+
 
 stop :: Maybe Text -> Maybe Text -> BooksM ()
 stop q l = do

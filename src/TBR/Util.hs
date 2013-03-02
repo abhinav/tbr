@@ -6,13 +6,13 @@ module TBR.Util
     , counter
     ) where
 
+import           Control.Applicative
+import           Control.Monad.IO.Class
+import           Control.Monad.State    (StateT, evalStateT, get, put)
+import           Data.Char              (isAlphaNum, isSpace)
 import           Data.Text              (Text)
 import qualified Data.Text              as T
-import           Data.Char              (isAlphaNum, isSpace)
 import qualified Data.Text.IO           as TIO
-import           Control.Applicative
-import           Control.Monad.State    (StateT, evalStateT, get, put)
-import           Control.Monad.IO.Class
 
 -- | Splits the given string into tokens that contain only alphanumeric
 -- characters.

@@ -1,12 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 module TBR.Reader (parseDocument) where
 
-import TBR.Types
+import           TBR.Types
 
-import Data.Text            (Text, pack)
-import Control.Monad        (void)
-import Control.Applicative
-import Data.Attoparsec.Text
+import           Control.Applicative
+import           Control.Monad        (void)
+import           Data.Attoparsec.Text
+import           Data.Text            (Text, pack)
 
 -- | Skip a bunch of newlines.
 skipLines :: Parser ()

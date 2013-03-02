@@ -1,11 +1,11 @@
 module TBR.Script (ScriptT, runScriptT, scriptIO) where
 
-import           Data.Text              (Text, pack)
-import           System.IO              (stderr)
-import           System.Exit            (exitFailure)
+import qualified Control.Error          as E
 import           Control.Monad.IO.Class
-import qualified Control.Error as E
-import qualified Data.Text.IO as TIO
+import           Data.Text              (Text, pack)
+import qualified Data.Text.IO           as TIO
+import           System.Exit            (exitFailure)
+import           System.IO              (stderr)
 
 type ScriptT m = E.EitherT Text m
 

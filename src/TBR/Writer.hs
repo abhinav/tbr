@@ -1,12 +1,12 @@
 {-# LANGUAGE OverloadedStrings, RecordWildCards #-}
 module TBR.Writer (writeDocument) where
 
-import           TBR.Types
-import qualified Data.Text                 as T
-import           Data.Text.Lazy            (Text)
 import           Control.Monad.State
 import           Control.Monad.Writer
+import qualified Data.Text              as T
+import           Data.Text.Lazy         (Text)
 import           Data.Text.Lazy.Builder
+import           TBR.Types
 
 type TextBuilder = Writer Builder
 
@@ -33,7 +33,7 @@ writeDocument :: Document -> Text
 writeDocument = runTextBuilder . mapM_ writeBlocks
 
 writeBlocks :: Block -> TextBuilder ()
-writeBlocks Block{..} = void $ 
+writeBlocks Block{..} = void $
        writeHeader blockHeader >> newln
     >> runCounter (mapM_ (writeEntry numEntries) blockEntries)
     >> newln

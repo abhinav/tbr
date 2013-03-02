@@ -10,15 +10,15 @@ module TBR.Types
     , bookListToDocument
     ) where
 
-import           TBR.Util
 import           TBR.Script
+import           TBR.Util
 
-import           Data.Text              (Text)
-import           Data.List              (sortBy, groupBy)
-import           Data.Default           (Default(..))
-import           Control.Error          (left, right)
-import           Control.Applicative    ((<$>), (<*>), pure)
-import           Text.Shakespeare.Text  (st)
+import           Control.Applicative   (pure, (<$>), (<*>))
+import           Control.Error         (left, right)
+import           Data.Default          (Default (..))
+import           Data.List             (groupBy, sortBy)
+import           Data.Text             (Text)
+import           Text.Shakespeare.Text (st)
 
 --------------------------------------------------------------------------------
 -- Low level document representation
@@ -80,7 +80,7 @@ documentToBookList documentBlocks = BookList
 
     -- Get the entries for the block with the given name or fail.
     lookupBlock :: Text -> ScriptT m [Entry]
-    lookupBlock name = 
+    lookupBlock name =
         case filter (match . blockHeader) documentBlocks of
             []  -> left [st|Could not find the section: #{name}|]
             [x] -> right (blockEntries x)
@@ -94,7 +94,7 @@ documentToBookList documentBlocks = BookList
 
 -- | Convert a @BookList@ into a @Document@.
 bookListToDocument :: BookList -> Document
-bookListToDocument BookList{..} = 
+bookListToDocument BookList{..} =
     [ toBlock "Reading"      blReading
     , toBlock "To Be Read"   blToBeRead] ++ map (uncurry toBlock) blExtra
   where

@@ -1,0 +1,10 @@
+steps:
+  - imports:
+      align: global
+  - language_pragmas:
+      style: compact
+      remove_redundant: true
+  - tabs:
+      spaces: 4
+  - trailing_whitespace: {}
+columns: 80

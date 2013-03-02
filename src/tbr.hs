@@ -1,22 +1,22 @@
-{-# LANGUAGE RecordWildCards, OverloadedStrings, GeneralizedNewtypeDeriving,
-             QuasiQuotes, FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts, GeneralizedNewtypeDeriving, OverloadedStrings,
+             QuasiQuotes, RecordWildCards #-}
 module Main (main) where
 
+import           TBR.Monad
 import           TBR.Types
 import           TBR.Util
-import           TBR.Monad
 
-import           Data.Text              (Text)
-import           Data.List              (isInfixOf, intersect)
-import qualified Data.Text              as T
-import           Control.Monad          (unless, forM_)
-import           System.FilePath        ((</>))
-import           System.Directory
-import           Options.Applicative
+import           Control.Monad          (forM_, unless)
+import           Control.Monad.IO.Class (MonadIO)
 import           Control.Monad.State    (get, modify)
 import           Control.Monad.Writer   (execWriter, tell)
+import           Data.List              (intersect, isInfixOf)
+import           Data.Text              (Text)
+import qualified Data.Text              as T
+import           Options.Applicative
+import           System.Directory
+import           System.FilePath        ((</>))
 import           Text.Shakespeare.Text  (st)
-import           Control.Monad.IO.Class (MonadIO)
 
 --------------------------------------------------------------------------------
 -- Operations inside the BooksM monad
@@ -161,7 +161,7 @@ list = maybe listAll listOne
             printBookList lst
 
     listOne :: Text -> BooksM ()
-    listOne n = getExtraList n >>= uncurry printSection 
+    listOne n = getExtraList n >>= uncurry printSection
 
     listAll :: BooksM ()
     listAll = do
@@ -248,8 +248,8 @@ dispatch args = runBooksM (argFile args) $
     Search{..} -> search searchQuery searchList
     Status     -> status
     Stop{..}   -> stop stopQuery stopList
-    
-        
+
+
 -- | Represents the subcommands offered by the program.
 data Command = Add    { addTitle    :: Text
                       , addAuthor   :: Text
@@ -264,7 +264,7 @@ data Command = Add    { addTitle    :: Text
                       , removeList  :: Maybe Text}
              | Search { searchQuery :: Text
                       , searchList  :: Maybe Text }
-             | Status 
+             | Status
              | Stop   { stopQuery   :: Maybe Text
                       , stopList    :: Maybe Text }
 

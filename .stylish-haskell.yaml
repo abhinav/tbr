@@ -2,7 +2,7 @@ steps:
   - imports:
       align: global
   - language_pragmas:
-      style: compact
+      style: vertical
       remove_redundant: true
   - tabs:
       spaces: 4

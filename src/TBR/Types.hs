@@ -1,5 +1,7 @@
-{-# LANGUAGE OverloadedStrings, QuasiQuotes, RecordWildCards,
-             ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE QuasiQuotes         #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module TBR.Types
     ( Entry(..)
     , Block(..)

@@ -1,4 +1,5 @@
-{-# LANGUAGE OverloadedStrings, RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 module TBR.Writer (writeDocument) where
 
 import           Control.Monad.State

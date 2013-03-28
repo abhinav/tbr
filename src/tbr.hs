@@ -1,5 +1,8 @@
-{-# LANGUAGE FlexibleContexts, GeneralizedNewtypeDeriving, OverloadedStrings,
-             QuasiQuotes, RecordWildCards #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE QuasiQuotes                #-}
+{-# LANGUAGE RecordWildCards            #-}
 module Main (main) where
 
 import           TBR.Monad

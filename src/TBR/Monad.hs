@@ -5,11 +5,6 @@ module TBR.Monad
     , err
     ) where
 
-import           TBR.Reader
-import           TBR.Script
-import           TBR.Types
-import           TBR.Writer
-
 import           Control.Applicative
 import           Control.Error       (catchT, hoistEither, left, right)
 import           Control.Monad.State
@@ -19,6 +14,10 @@ import qualified Data.Text.IO        as TIO
 import qualified Data.Text.Lazy.IO   as TLIO
 import           System.Directory
 import           System.FilePath     (takeDirectory)
+import           TBR.Reader
+import           TBR.Script
+import           TBR.Types
+import           TBR.Writer
 
 -- | The BooksM monad allows access to the @BookList@.
 newtype BooksM a = BM { runBM :: ScriptT (StateT BookList IO) a }
@@ -38,12 +37,11 @@ runBooksM path b = do
   where
     parseList = do
         contents <- scriptIO (TIO.readFile path)
-        document <- catchT (hoistEither $ parseDocument contents)
-                           (left . T.pack)
-        documentToBookList document
+        catchT (hoistEither $ readBookList contents)
+               (left . T.pack)
     putList bl = scriptIO $ do
         createDirectoryIfMissing True (takeDirectory path)
-        TLIO.writeFile path (writeDocument $ bookListToDocument bl)
+        TLIO.writeFile path (writeBookList bl)
 
 err :: T.Text -> BooksM a
 err = BM . left

@@ -1,19 +1,21 @@
 {-# LANGUAGE OverloadedStrings #-}
-module TBR.Reader (parseDocument) where
-
-import           TBR.Types
+module TBR.Reader (readBookList) where
 
 import           Control.Applicative
 import           Control.Monad        (void)
 import           Data.Attoparsec.Text
+import           Data.Monoid
+import qualified Data.Set             as Set
 import           Data.Text            (Text, pack)
+import           TBR.Types
+import           TBR.Util
 
--- | Skip a bunch of newlines.
+-- | Skips consecutive newlines.
 skipLines :: Parser ()
 skipLines = skipMany endOfLine
 
 -- | Consumes the returns the rest of the line. The newline character is
--- consumed but not returned.
+-- consumed but is not a part of the text.
 restOfLine :: Parser Text
 restOfLine = takeTill isEndOfLine <* endOfLine
 
@@ -23,33 +25,54 @@ comment = open >> (pack <$> manyTill anyChar close)
     where open  = string "<!--" >> skipSpace
           close = skipSpace >> string "-->"
 
-header :: Parser Text
-header = restOfLine <* many1 (char '=')
+-- | Reads section headers.
+section :: Parser Section
+section = readSection <$>
+          restOfLine  <*  many1 (char '=')
+                      <*  skipLines
+  where
+    readSection s
+       | tokens s == tokens "Reading"    = Reading
+       | tokens s == tokens "To Be Read" = ToBeRead
+       | otherwise                       = Other s
 
-entry :: Parser Entry
-entry = itemNumber >> (singleBook <|> multipleBooks) <* skipLines
-    where itemNumber = (decimal :: Parser Integer) <* char '.' <* skipSpace
+-- | Reads a single author's entry that can contain one or more books.
+entry :: Section -> Parser BookList
+entry sec = do
+    void $ (decimal :: Parser Integer) <* char '.' <* skipSpace
+    (Set.singleton <$> singleBook sec <|> multipleBooks sec) <* skipLines
 
-singleBook :: Parser Entry
-singleBook = flip Entry <$> ((:[]) . pack <$> book)
-                        <*> author
-    where book   = manyTill (satisfy $ not . isEndOfLine) (string " - ")
-          author = restOfLine
+-- | Reads a single book in the format @TITLE - AUTHOR@.
+singleBook :: Section -> Parser Book
+singleBook sec = Book <$> readTitle
+                      <*> restOfLine -- author
+                      <*> pure sec
+  where
+    readTitle = pack  <$> manyTill (satisfy $ not . isEndOfLine)
+                                   (string " - ")
 
-multipleBooks :: Parser Entry
-multipleBooks = Entry <$> author
-                      <*> books
-    where author = restOfLine
-          books  = do indentSize <- length <$> many1 space
-                      sepBy bookItem (count indentSize space)
-          bookItem = char '-' >> skipSpace >> restOfLine
+-- | Reads multiple books by the same author in the format:
+--
+--      AUTHOR
+--      - TITLE
+--      - TITLE
+--
+multipleBooks :: Section -> Parser BookList
+multipleBooks sec = do
+    auth <- restOfLine
+    Set.fromList . map ((flip.flip Book) auth sec) <$> readTitles
+  where
+    readTitles = do indentSize <- length <$> many1 space
+                    readItem `sepBy` count indentSize space
+    readItem   = char '-' >> skipSpace >> restOfLine
 
-block :: Parser Block
-block = (Block <$> (header <* skipLines)
-               <*> many' entry) <* skipLines
+-- | Reads a section
+readBookSection :: Parser BookList
+readBookSection = mconcat <$> (section >>= many' . entry) <* skipLines
 
-document :: Parser Document
-document = option () (void comment) >> skipLines >> many1 block
+document :: Parser BookList
+document = option () (void comment) >> skipLines >>
+           mconcat <$> many1 readBookSection
 
-parseDocument :: Text -> Either String Document
-parseDocument = parseOnly document
+readBookList :: Text -> Either String BookList
+readBookList = parseOnly document

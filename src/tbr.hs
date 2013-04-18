@@ -9,6 +9,7 @@ import           Control.Monad
 import           Control.Monad.IO.Class
 import           Control.Monad.State
 import           Control.Monad.Writer   (execWriter, tell)
+import           Data.Function          (on)
 import qualified Data.Set               as Set
 import           Data.Text              (Text)
 import qualified Data.Text              as Text
@@ -84,7 +85,7 @@ allBooks = get
 
 -- | Finds the section name that matches the given query.
 findSection :: Text -> BooksM Text
-findSection l = do matches <- gets ( Set.toAscList 
+findSection l = do matches <- gets ( Set.toAscList
                                    . Set.filter match
                                    . Set.map bookSection )
                    case matches of
@@ -131,9 +132,14 @@ list name = maybe allBooks findOther name >>= printBookList
 move :: Text -> Text -> BooksM ()
 move q lname = do
     b <- allBooks >>= query1 q
-    modify $ Set.insert (b { bookSection = Other lname })
+    modify $ Set.insert (b { bookSection = section })
            . Set.delete  b
-    putLn [st|Moved #{formatBook b} to #{lname}|]
+    putLn [st|Moved #{formatBook b} to #{show section}|]
+  where
+    section | lname `eq` "Reading"    = Reading
+            | lname `eq` "To Be Read" = ToBeRead
+            | otherwise               = Other lname
+    eq = (==) `on` tokens
 
 remove :: Text -> BooksM ()
 remove q = do

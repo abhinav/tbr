@@ -9,7 +9,7 @@ module TBR.Types
 import           Data.Monoid
 import           Data.Ord    (comparing)
 import           Data.Set    (Set)
-import           Data.Text   (Text)
+import           Data.Text   (Text, unpack)
 
 type Author = Text
 type Title  = Text
@@ -18,7 +18,7 @@ type BookList = Set Book
 data Section = Reading
              | ToBeRead
              | Other Text
-    deriving (Show, Eq, Ord)
+    deriving (Eq, Ord)
 
 data Book = Book { bookTitle   :: Title
                  , bookAuthor  :: Author
@@ -30,3 +30,7 @@ instance Ord Book where
               comparing bookAuthor  <>
               comparing bookTitle
 
+instance Show Section where
+    show Reading   = "Reading"
+    show ToBeRead  = "To Be Read"
+    show (Other t) = unpack t

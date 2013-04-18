@@ -2,6 +2,7 @@ module TBR.Util
     ( tokens
     , tokenMatch
     , putLn
+    , puts
     , CounterT
     , runCounterT
     , counter
@@ -32,6 +33,9 @@ tokenMatch = isInfixOf `on` tokens
 -- lifting IO operations.
 putLn :: MonadIO m => Text -> m ()
 putLn = liftIO . TIO.putStrLn
+
+puts :: MonadIO m => Text -> m ()
+puts = liftIO . TIO.putStr
 
 -- | A monad transformer to maintain a running count of some kind.
 type CounterT = StateT Int

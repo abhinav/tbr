@@ -8,7 +8,7 @@ module TBR.Monad
 import           Control.Applicative
 import           Control.Error       (catchT, hoistEither, left, right)
 import           Control.Monad.State
-import           Data.Default
+import qualified Data.Set            as Set
 import qualified Data.Text           as T
 import qualified Data.Text.IO        as TIO
 import qualified Data.Text.Lazy.IO   as TLIO
@@ -28,7 +28,7 @@ runBooksM :: FilePath -> BooksM a -> IO a
 runBooksM path b = do
     -- Attempt to read the contents of the file into a BookList. If the
     -- operation fails for any reason, use a default BookList.
-    bookList <- runScriptT $ catchT parseList (const $ right def)
+    bookList <- runScriptT $ catchT parseList (const $ right Set.empty)
     (a, bookList') <- runStateT (runScriptT $ runBM b) bookList
 
     -- If the BookList has been changed, write it the file.

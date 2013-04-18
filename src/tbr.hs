@@ -185,8 +185,8 @@ text = return . Text.pack
 
 -- | Dispatch the correct subcommand based on the options.
 dispatch :: Argument -> IO ()
-dispatch args = runBooksM (argFile args) $
-  case argCommand args of
+dispatch Argument{..} = runBooksM argFile argDryRun $
+  case argCommand of
     Add{..}    -> add addTitle addAuthor addList
     Finish{..} -> finish finishQuery
     List{..}   -> list listList
@@ -215,6 +215,7 @@ data Command = Add    { addTitle    :: Text
 
 -- | Represents all the command line arguments accepted by the program.
 data Argument = Argument { argFile    :: FilePath
+                         , argDryRun  :: Bool
                          , argCommand :: Command
                          }
 
@@ -269,6 +270,8 @@ getArgumentParser appDir =
                        metavar "FILE"           <>
                        help "The reading list." <>
                        value filepath            )
+        <*> switch (long "dry-run" <> short 'n' <>
+                    help "Don't change the file.")
         <*> commandParser
   where
     filepath = appDir </> "tbr.txt"

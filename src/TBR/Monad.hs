@@ -24,15 +24,17 @@ newtype BooksM a = BM { runBM :: ScriptT (StateT BookList IO) a }
   deriving (Applicative, Functor, Monad, MonadState BookList, MonadIO)
 
 -- | Execute the @BooksM@ monad.
-runBooksM :: FilePath -> BooksM a -> IO a
-runBooksM path b = do
+runBooksM :: FilePath -> Bool -> BooksM a -> IO a
+runBooksM path dryrun b = do
     -- Attempt to read the contents of the file into a BookList. If the
     -- operation fails for any reason, use a default BookList.
     bookList <- runScriptT $ catchT parseList (const $ right Set.empty)
     (a, bookList') <- runStateT (runScriptT $ runBM b) bookList
 
     -- If the BookList has been changed, write it the file.
-    when (bookList /= bookList') $ runScriptT $ putList bookList'
+    when (bookList /= bookList' && not dryrun) $
+        runScriptT $ putList bookList'
+
     return a
   where
     parseList = do

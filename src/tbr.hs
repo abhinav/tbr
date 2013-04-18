@@ -52,6 +52,11 @@ others = find $ isOther . bookSection
 other :: Text -> BooksM BookList
 other t = find $ (== Other t) . bookSection
 
+-- | Same as @other@ except the section name is matched against existing
+-- section names.
+findOther :: Text -> BooksM BookList
+findOther = findSection >=> other
+
 -- | Queries the given list of books for books that match the given criteria.
 query :: Text -> BookList -> BookList
 query q = Set.filter matcher
@@ -76,6 +81,18 @@ query1 q = expect1 . query q
 -- | Returns all books in the list.
 allBooks :: BooksM BookList
 allBooks = get
+
+-- | Finds the section name that matches the given query.
+findSection :: Text -> BooksM Text
+findSection l = do matches <- gets ( Set.toAscList 
+                                   . Set.filter match
+                                   . Set.map bookSection )
+                   case matches of
+                       [Other n] -> return n
+                       _         -> err [st|Unable to find such a section.|]
+  where
+    match (Other x) = l `tokenMatch` x
+    match  _        = False
 
 --------------------------------------------------------------------------------
 -- Formatting
@@ -109,7 +126,7 @@ finish q = do
     putLn [st|Finished reading #{formatBook b}|]
 
 list :: Maybe Text -> BooksM ()
-list name = maybe allBooks other name >>= printBookList
+list name = maybe allBooks findOther name >>= printBookList
 
 move :: Text -> Text -> BooksM ()
 move q lname = do
@@ -149,7 +166,8 @@ status = do
 stop :: Maybe Text -> Maybe Text -> BooksM ()
 stop q l = do
     b <- reading >>= maybe expect1 query1 q
-    modify $ Set.insert (b { bookSection = maybe ToBeRead Other l })
+    sec <- maybe (return ToBeRead) (fmap Other . findSection) l
+    modify $ Set.insert (b { bookSection = sec })
            . Set.delete  b
     putLn [st|Stopped reading #{formatBook b}.|]
 

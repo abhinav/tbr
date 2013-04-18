@@ -14,7 +14,7 @@
 :   Support arbitrary numbers of lists instead of just the three. Interface
     may need to be re-done.
 
-[ ]
+[✓]
 :   Clean up tbr.hs
 
 [ ]

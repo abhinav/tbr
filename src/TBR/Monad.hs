@@ -1,8 +1,11 @@
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
 module TBR.Monad
     ( BooksM
     , runBooksM
     , throwError
+    , MonadBooks
     ) where
 
 import           Control.Applicative
@@ -22,6 +25,8 @@ import           TBR.Script
 import           TBR.Types
 import           TBR.Writer
 
+class (MonadError T.Text m, MonadIO m, MonadState BookList m) => MonadBooks m
+
 -- | The BooksM monad allows access to the @BookList@.
 newtype BooksM a = BM { runBM :: ScriptT (StateT BookList IO) a }
   deriving ( Applicative
@@ -31,6 +36,8 @@ newtype BooksM a = BM { runBM :: ScriptT (StateT BookList IO) a }
            , MonadIO
            , MonadState BookList
            )
+
+instance MonadBooks BooksM
 
 -- | Execute the @BooksM@ monad.
 runBooksM :: FilePath -> Bool -> BooksM a -> IO a

@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE QuasiQuotes                #-}
 {-# LANGUAGE RecordWildCards            #-}
@@ -28,34 +29,34 @@ import           Text.Shakespeare.Text  (st)
 
 -- | Returns a subset of the current booklist that contains the books for which
 -- the given predicate returns true.
-find :: (Book -> Bool) -> BooksM BookList
+find :: MonadState BookList m => (Book -> Bool) -> m BookList
 find f = gets (Set.filter f)
 
 -- | Returns the books that are marked as being read.
-reading :: BooksM BookList
+reading :: MonadState BookList m => m BookList
 reading = find $ (== Reading) . bookSection
 
 -- | Returns the books under the to-be-read section.
-toBeRead :: BooksM BookList
+toBeRead :: MonadState BookList m => m BookList
 toBeRead = find $ (== ToBeRead) . bookSection
 
 -- | Returns all books that are not being read.
-allButReading :: BooksM BookList
+allButReading :: MonadState BookList m => m BookList
 allButReading = find $ (/= Reading) . bookSection
 
 -- | Returns all books that are under a custom list.
-others :: BooksM BookList
+others :: MonadState BookList m => m BookList
 others = find $ isOther . bookSection
   where isOther (Other _) = True
         isOther _         = False
 
 -- | Returns all books that are under the given list.
-other :: Text -> BooksM BookList
+other :: MonadState BookList m => Text -> m BookList
 other t = find $ (== Other t) . bookSection
 
 -- | Same as @other@ except the section name is matched against existing
 -- section names.
-findOther :: Text -> BooksM BookList
+findOther :: MonadBooks m => Text -> m BookList
 findOther = findSection >=> other
 
 -- | Queries the given list of books for books that match the given criteria.
@@ -66,7 +67,7 @@ query q = Set.filter matcher
         match   = tokenMatch q
 
 -- | Expects exactly one book and throws an error if that is not satisfied.
-expect1 :: BookList -> BooksM Book
+expect1 :: MonadBooks m => BookList -> m Book
 expect1 bl = case Set.toAscList bl of
                 []  -> throwError [st|Unable to find such a book.|]
                 [b] -> return b
@@ -76,15 +77,15 @@ expect1 bl = case Set.toAscList bl of
 
 -- | Finds exactly one book that matches the given query and throws an error
 -- otherwise.
-query1 :: Text -> BookList -> BooksM Book
+query1 :: MonadBooks m => Text -> BookList -> m Book
 query1 q = expect1 . query q
 
 -- | Returns all books in the list.
-allBooks :: BooksM BookList
+allBooks :: MonadState BookList m => m BookList
 allBooks = get
 
 -- | Finds the section name that matches the given query.
-findSection :: Text -> BooksM Text
+findSection :: MonadBooks m => Text -> m Text
 findSection l = do
     matches <- gets ( Set.toAscList
                     . Set.filter match
@@ -110,7 +111,7 @@ printBookList = puts . toStrict . writeBookList
 --------------------------------------------------------------------------------
 -- Commands
 
-add :: Text -> Text -> Maybe Text -> BooksM ()
+add :: MonadBooks m => Text -> Text -> Maybe Text -> m ()
 add title author lname = do
     books <- allBooks
     unless (Set.null $ matches books) $
@@ -121,7 +122,7 @@ add title author lname = do
         matches bl = query title  bl `Set.intersection`
                      query author bl
 
-finish :: Maybe Text -> BooksM ()
+finish :: MonadBooks m => Maybe Text -> m ()
 finish q = do
     b <- reading >>= maybe expect1 query1 q
     modify $ Set.delete b
@@ -130,7 +131,7 @@ finish q = do
 list :: Maybe Text -> BooksM ()
 list name = maybe allBooks findOther name >>= printBookList
 
-move :: Text -> Text -> BooksM ()
+move :: MonadBooks m => Text -> Text -> m ()
 move q lname = do
     b <- allBooks >>= query1 q
     modify $ Set.insert (b { bookSection = section })
@@ -142,7 +143,7 @@ move q lname = do
             | otherwise               = Other lname
     eq = (==) `on` tokens
 
-remove :: Text -> BooksM ()
+remove :: MonadBooks m => Text -> m ()
 remove q = do
     b <- allButReading >>= query1 q
     modify $ Set.delete b
@@ -151,14 +152,14 @@ remove q = do
 search :: Text -> BooksM ()
 search q = query q <$> allBooks >>= printBookList
 
-start :: Text -> BooksM ()
+start :: MonadBooks m => Text -> m ()
 start q = do
     b <- allButReading >>= query1 q
     modify $ Set.insert (b { bookSection = Reading })
            . Set.delete  b
     putLn [st|Started reading #{formatBook b}.|]
 
-status :: BooksM ()
+status :: (Functor m, MonadBooks m) => m ()
 status = do
     rl <- reading
     unless (Set.null rl) $
@@ -170,7 +171,7 @@ status = do
     putLn $ [st|There are #{show $ tbrCount + otherCount} |]
          <> [st|(#{show otherCount} other) books to be read.|]
 
-stop :: Maybe Text -> Maybe Text -> BooksM ()
+stop :: (Functor m, MonadBooks m) => Maybe Text -> Maybe Text -> m ()
 stop q l = do
     b <- reading >>= maybe expect1 query1 q
     sec <- maybe (return ToBeRead) (fmap Other . findSection) l

@@ -2,18 +2,21 @@
 module TBR.Monad
     ( BooksM
     , runBooksM
-    , err
+    , throwError
     ) where
 
 import           Control.Applicative
-import           Control.Error       (catchT, hoistEither, left, right)
-import           Control.Monad.State
-import qualified Data.Set            as Set
-import qualified Data.Text           as T
-import qualified Data.Text.IO        as TIO
-import qualified Data.Text.Lazy.IO   as TLIO
+import           Control.Error          (catchT, hoistEither, left, right)
+import           Control.Monad
+import           Control.Monad.Error    (MonadError, throwError)
+import           Control.Monad.IO.Class (MonadIO)
+import           Control.Monad.State    (MonadState, StateT, runStateT)
+import qualified Data.Set               as Set
+import qualified Data.Text              as T
+import qualified Data.Text.IO           as TIO
+import qualified Data.Text.Lazy.IO      as TLIO
 import           System.Directory
-import           System.FilePath     (takeDirectory)
+import           System.FilePath        (takeDirectory)
 import           TBR.Reader
 import           TBR.Script
 import           TBR.Types
@@ -21,7 +24,13 @@ import           TBR.Writer
 
 -- | The BooksM monad allows access to the @BookList@.
 newtype BooksM a = BM { runBM :: ScriptT (StateT BookList IO) a }
-  deriving (Applicative, Functor, Monad, MonadState BookList, MonadIO)
+  deriving ( Applicative
+           , Functor
+           , Monad
+           , MonadError T.Text
+           , MonadIO
+           , MonadState BookList
+           )
 
 -- | Execute the @BooksM@ monad.
 runBooksM :: FilePath -> Bool -> BooksM a -> IO a
@@ -45,5 +54,3 @@ runBooksM path dryrun b = do
         createDirectoryIfMissing True (takeDirectory path)
         TLIO.writeFile path (writeBookList bl)
 
-err :: T.Text -> BooksM a
-err = BM . left

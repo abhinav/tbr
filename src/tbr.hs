@@ -68,11 +68,11 @@ query q = Set.filter matcher
 -- | Expects exactly one book and throws an error if that is not satisfied.
 expect1 :: BookList -> BooksM Book
 expect1 bl = case Set.toAscList bl of
-                []  -> err [st|Unable to find such a book.|]
+                []  -> throwError [st|Unable to find such a book.|]
                 [b] -> return b
                 _   -> do putLn "The query matched:"
                           printBookList bl
-                          err "Please refine the query."
+                          throwError "Please refine the query."
 
 -- | Finds exactly one book that matches the given query and throws an error
 -- otherwise.
@@ -85,12 +85,13 @@ allBooks = get
 
 -- | Finds the section name that matches the given query.
 findSection :: Text -> BooksM Text
-findSection l = do matches <- gets ( Set.toAscList
-                                   . Set.filter match
-                                   . Set.map bookSection )
-                   case matches of
-                       [Other n] -> return n
-                       _         -> err [st|Unable to find such a section.|]
+findSection l = do
+    matches <- gets ( Set.toAscList
+                    . Set.filter match
+                    . Set.map bookSection )
+    case matches of
+        [Other n] -> return n
+        _         -> throwError [st|Unable to find such a section.|]
   where
     match (Other x) = l `tokenMatch` x
     match  _        = False
@@ -113,7 +114,7 @@ add :: Text -> Text -> Maybe Text -> BooksM ()
 add title author lname = do
     books <- allBooks
     unless (Set.null $ matches books) $
-        err "You have already added that book."
+        throwError "You have already added that book."
     modify $ Set.insert book
     putLn [st|Added #{formatBook book} to the reading list.|]
   where book = Book title author (maybe ToBeRead Other lname)

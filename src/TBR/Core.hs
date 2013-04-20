@@ -122,9 +122,9 @@ add title author lname = do
         throwError "You have already added that book."
     modify $ Set.insert book
     putLn [st|Added #{formatBook book} to the reading list.|]
-  where book = Book title author (maybe ToBeRead Other lname)
-        matches bl = query title  bl `Set.intersection`
-                     query author bl
+  where book       = Book title author' (maybe ToBeRead Other lname)
+        matches bl = query title bl `Set.intersection` query author bl
+        author'    = capitalize author
 
 finish :: MonadBooks m => Maybe Text -> m ()
 finish q = do

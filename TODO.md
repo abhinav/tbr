@@ -20,8 +20,8 @@
 [ ]
 :   Tests.
 
-[ ]
-:   Capitalize author names and book names.
+[✓]
+:   Capitalize author names
 
 [ ]
 :   Allow changing the location of the book list. Probably use

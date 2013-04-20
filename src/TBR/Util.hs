@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module TBR.Util
     ( tokens
     , tokenMatch
@@ -6,6 +7,7 @@ module TBR.Util
     , CounterT
     , runCounterT
     , counter
+    , capitalize
     ) where
 
 import           Control.Applicative
@@ -14,6 +16,7 @@ import           Control.Monad.State    (StateT, evalStateT, get, put)
 import           Data.Char              (isAlphaNum, isSpace)
 import           Data.Function          (on)
 import           Data.List              (isInfixOf)
+import           Data.Monoid
 import           Data.Text              (Text)
 import qualified Data.Text              as Text
 import qualified Data.Text.IO           as TIO
@@ -50,3 +53,7 @@ counter = do
 -- | Run the counter. Counting starts at 1.
 runCounterT :: Monad m => CounterT m a -> m a
 runCounterT = flip evalStateT 1
+
+capitalize :: Text -> Text
+capitalize = Text.intercalate " " . map go . Text.splitOn " "
+    where go = (Text.toUpper . Text.take 1) <> Text.drop 1

@@ -8,6 +8,7 @@ module TBR.Core
     , finish
     , list
     , move
+    , random
     , remove
     , search
     , start
@@ -22,6 +23,7 @@ import           Data.Monoid
 import qualified Data.Set              as Set
 import           Data.Text             (Text)
 import           Data.Text.Lazy        (toStrict)
+import           System.Random         (randomRIO)
 import           TBR.Monad
 import           TBR.Types
 import           TBR.Util
@@ -146,6 +148,13 @@ move q lname = do
             | lname `eq` "To Be Read" = ToBeRead
             | otherwise               = Other lname
     eq = (==) `on` tokens
+
+random :: MonadBooks m => Maybe Text -> m ()
+random lname = do
+    bs <- maybe toBeRead findOther lname
+    i  <- liftIO $ randomRIO (0, Set.size bs - 1)
+    let b = Set.toAscList bs !! i
+    putLn $ formatBook b
 
 remove :: MonadBooks m => Text -> m ()
 remove q = do

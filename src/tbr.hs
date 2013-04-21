@@ -25,6 +25,7 @@ dispatch Argument{..} = runBooksM argFile argDryRun $
     Finish{..} -> finish finishQuery
     List{..}   -> list listList
     Move{..}   -> move moveQuery moveList
+    Random{..} -> random randomList
     Remove{..} -> remove removeQuery
     Search{..} -> search searchQuery
     Start{..}  -> start startQuery
@@ -40,6 +41,7 @@ data Command = Add    { addTitle    :: Text
              | List   { listList    :: Maybe Text }
              | Move   { moveQuery   :: Text
                       , moveList    :: Text       }
+             | Random { randomList  :: Maybe Text }
              | Remove { removeQuery :: Text       }
              | Search { searchQuery :: Text       }
              | Start  { startQuery  :: Text       }
@@ -53,8 +55,8 @@ data Argument = Argument { argFile    :: FilePath
                          , argCommand :: Command
                          }
 
-addParser, finishParser, listParser, moveParser, removeParser, searchParser,
-    startParser, stopParser :: Parser Command
+addParser, finishParser, listParser, moveParser, randomParser, removeParser,
+    searchParser, startParser, stopParser :: Parser Command
 
 listOption :: Parser (Maybe Text)
 listOption = optional . nullOption  $
@@ -74,6 +76,7 @@ finishParser = Finish <$> optional queryParser
 listParser   = List   <$>          listOption
 moveParser   = Move   <$>          queryParser
                       <*> argument text (metavar "LIST")
+randomParser = Random <$>          listOption
 removeParser = Remove <$>          queryParser
 searchParser = Search <$>          queryParser
 startParser  = Start  <$>          queryParser
@@ -87,6 +90,7 @@ commandParser = subparser . execWriter $ do
     cmd finishParser  "finish" "Mark a book finished."
     cmd listParser    "list"   "List all books to be read."
     cmd moveParser    "move"   "Move a book between lists."
+    cmd randomParser  "random" "Suggest a random book."
     cmd removeParser  "remove" "Remove a book."
     cmd searchParser  "search" "Search for a book in the list."
     cmd startParser   "start"  "Start reading a book."

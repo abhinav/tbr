@@ -1,11 +1,13 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE RecordWildCards            #-}
 module TBR.Monad
     ( BooksM
     , runBooksM
     , throwError
     , MonadBooks
+    , Configuration(..)
     ) where
 
 import           Control.Applicative
@@ -40,24 +42,30 @@ newtype BooksM a = BM { runBM :: ScriptT (StateT BookList IO) a }
 instance MonadBooks BooksM
 
 -- | Execute the @BooksM@ monad.
-runBooksM :: FilePath -> Bool -> BooksM a -> IO a
-runBooksM path dryrun b = do
+runBooksM :: Configuration -> BooksM a -> IO a
+runBooksM Configuration{..} b = do
     -- Attempt to read the contents of the file into a BookList. If the
     -- operation fails for any reason, use a default BookList.
     bookList <- runScriptT $ catchT parseList (const $ right Set.empty)
     (a, bookList') <- runStateT (runScriptT $ runBM b) bookList
 
     -- If the BookList has been changed, write it the file.
-    when (bookList /= bookList' && not dryrun) $
+    when (bookList /= bookList' && not configDryRun) $
         runScriptT $ putList bookList'
 
     return a
   where
     parseList = do
-        contents <- scriptIO (TIO.readFile path)
+        contents <- scriptIO (TIO.readFile configTarget)
         catchT (hoistEither $ readBookList contents)
                (left . T.pack)
     putList bl = scriptIO $ do
-        createDirectoryIfMissing True (takeDirectory path)
-        TLIO.writeFile path (writeBookList bl)
+        createDirectoryIfMissing True (takeDirectory configTarget)
+        TLIO.writeFile configTarget (writeBookList bl)
 
+data Configuration = Configuration { configTarget :: FilePath
+                                   -- ^ File containing the reading list.
+                                   , configDryRun :: Bool
+                                   -- ^ Whether changes to the reading list
+                                   -- should be committed.
+                                   } deriving (Show, Eq)

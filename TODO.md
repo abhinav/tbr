@@ -23,7 +23,7 @@
 [✓]
 :   Capitalize author names
 
-[ ]
+[✓]
 :   Allow changing the location of the book list. Probably use
     [Configurator][] for this.
 

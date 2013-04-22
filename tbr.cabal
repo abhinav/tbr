@@ -25,6 +25,7 @@ executable tbr
   build-depends  : base
                  , attoparsec            >= 0.10
                  , containers            >= 0.4
+                 , configurator          >= 0.2
                  , directory
                  , either                >= 3.1
                  , errors                >= 1.3

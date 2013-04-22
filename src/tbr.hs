@@ -1,8 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TupleSections     #-}
 module Main (main) where
 
 import           Control.Monad.Writer (execWriter, tell)
+import qualified Data.Configurator    as Config
 import           Data.Text            (Text)
 import qualified Data.Text            as Text
 import           Options.Applicative
@@ -10,6 +12,7 @@ import           System.Directory
 import           System.FilePath      ((</>))
 import           TBR.Core
 import           TBR.Monad
+import           TBR.Script
 
 --------------------------------------------------------------------------------
 -- Argument parsing and dispatch
@@ -17,10 +20,21 @@ import           TBR.Monad
 text :: Monad m => String -> m Text
 text = return . Text.pack
 
+readConfiguration :: Argument -> IO (Command, Configuration)
+readConfiguration Argument{..} = runScriptT . scriptIO $ do
+    home <- getHomeDirectory
+    let defaultTarget = home </> ".tbr" </> "tbr.txt"
+
+    config <- Config.load [Config.Optional "$(HOME)/.tbr/config"]
+    (argCommand,)    <$>
+      (Configuration <$> Config.lookupDefault
+                            defaultTarget config "tbr.target"
+                     <*> pure argDryRun)
+
 -- | Dispatch the correct subcommand based on the options.
-dispatch :: Argument -> IO ()
-dispatch Argument{..} = runBooksM argFile argDryRun $
-  case argCommand of
+dispatch :: Command -> Configuration -> IO ()
+dispatch cmd = flip runBooksM $
+  case cmd of
     Add{..}    -> add addTitle addAuthor addList
     Finish{..} -> finish finishQuery
     List{..}   -> list listList
@@ -48,12 +62,12 @@ data Command = Add    { addTitle    :: Text
              | Status
              | Stop   { stopQuery   :: Maybe Text
                       , stopList    :: Maybe Text }
+    deriving (Show, Eq)
 
 -- | Represents all the command line arguments accepted by the program.
-data Argument = Argument { argFile    :: FilePath
-                         , argDryRun  :: Bool
+data Argument = Argument { argDryRun  :: Bool
                          , argCommand :: Command
-                         }
+                         } deriving (Show, Eq)
 
 addParser, finishParser, listParser, moveParser, randomParser, removeParser,
     searchParser, startParser, stopParser :: Parser Command
@@ -100,23 +114,13 @@ commandParser = subparser . execWriter $ do
     cmd parser name desc = tell $ command name (info parser $ progDesc desc)
 
 -- | Build the complete command line argument parser.
-getArgumentParser :: FilePath -> Parser Argument
-getArgumentParser appDir =
-    Argument
-        <$> strOption (long "file"              <>
-                       short 'f'                <>
-                       metavar "FILE"           <>
-                       help "The reading list." <>
-                       value filepath            )
-        <*> switch (long "dry-run" <> short 'n' <>
-                    help "Don't change the file.")
-        <*> commandParser
-  where
-    filepath = appDir </> "tbr.txt"
+argumentParser :: Parser Argument
+argumentParser = Argument
+    <$> switch (long "dry-run" <> short 'n' <> help "Don't change the file.")
+    <*> commandParser
 
 main :: IO ()
-main = do
-    parser <- getArgumentParser <$> getAppUserDataDirectory "tbr"
-    dispatch =<<
-        execParser (info (helper  <*> parser)
-                         (fullDesc <> header "A tool to maintain reading lists."))
+main = execParser (info (helper  <*> argumentParser)
+                        (fullDesc <> header "A tool to maintain reading lists."))
+   >>= readConfiguration
+   >>= uncurry dispatch

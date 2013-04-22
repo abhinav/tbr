@@ -151,10 +151,14 @@ move q lname = do
 
 random :: MonadBooks m => Maybe Text -> m ()
 random lname = do
-    bs <- maybe toBeRead findOther lname
-    i  <- liftIO $ randomRIO (0, Set.size bs - 1)
-    let b = Set.toAscList bs !! i
-    putLn $ formatBook b
+    books  <- maybe toBeRead findOther lname
+    author <- select $ Set.map bookAuthor books
+    book   <- select $ Set.filter ((== author) . bookAuthor) books
+    putLn $ formatBook book
+  where
+    select s = liftIO $ do
+        i <- randomRIO (0, Set.size s - 1)
+        return $ Set.toAscList s !! i
 
 remove :: MonadBooks m => Text -> m ()
 remove q = do

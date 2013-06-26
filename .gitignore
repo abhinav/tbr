@@ -1,0 +1,5 @@
+.hsenv
+*~
+*.swp
+dist
+tags

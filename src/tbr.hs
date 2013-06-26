@@ -72,30 +72,25 @@ data Argument = Argument { argDryRun  :: Bool
 addParser, finishParser, listParser, moveParser, randomParser, removeParser,
     searchParser, startParser, stopParser :: Parser Command
 
-listOption :: Parser (Maybe Text)
-listOption = optional . nullOption  $
-       reader ( return . Text.pack) <>
-              ( long "list"
-             <> short 'l'
-             <> metavar "LIST"
-             <> help "The target list." )
+listArgument :: Parser Text
+listArgument = argument text (metavar "LIST")
 
 queryParser :: Parser Text
 queryParser = argument text (metavar "QUERY")
 
 addParser    = Add    <$> argument text (metavar "TITLE")
                       <*> argument text (metavar "AUTHOR")
-                      <*>          listOption
+                      <*> optional listArgument
 finishParser = Finish <$> optional queryParser
-listParser   = List   <$>          listOption
+listParser   = List   <$> optional listArgument
 moveParser   = Move   <$>          queryParser
-                      <*> argument text (metavar "LIST")
-randomParser = Random <$>          listOption
+                      <*>          listArgument
+randomParser = Random <$> optional listArgument
 removeParser = Remove <$>          queryParser
 searchParser = Search <$>          queryParser
 startParser  = Start  <$>          queryParser
 stopParser   = Stop   <$> optional queryParser
-                      <*>          listOption
+                      <*> optional listArgument
 
 -- | Parser for all subcommands.
 commandParser :: Parser Command

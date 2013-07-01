@@ -10,10 +10,9 @@ module TBR.Util
     , capitalize
     ) where
 
-import           Control.Applicative
 import           Control.Monad.IO.Class
 import           Control.Monad.State    (StateT, evalStateT, get, put)
-import           Data.Char              (isAlphaNum, isSpace)
+import           Data.Char              (isAlphaNum)
 import           Data.Function          (on)
 import           Data.List              (isInfixOf)
 import           Data.Monoid
@@ -24,9 +23,9 @@ import qualified Data.Text.IO           as TIO
 -- | Splits the given string into tokens that contain only alphanumeric
 -- characters.
 tokens :: Text -> [Text]
-tokens = Text.split isSpace . clean
-    where clean   = Text.toLower . Text.filter isValid
-          isValid = (||) <$> isSpace <*> isAlphaNum
+tokens = filter (not . Text.null)
+       . Text.split (not . isAlphaNum)
+       . Text.toLower
 
 -- | @l `tokenMatch` r@ checks if all tokens of @l@ are in @r@.
 tokenMatch :: Text -> Text -> Bool

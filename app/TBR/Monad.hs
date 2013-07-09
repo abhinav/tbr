@@ -22,10 +22,8 @@ import qualified Data.Text.IO           as TIO
 import qualified Data.Text.Lazy.IO      as TLIO
 import           System.Directory
 import           System.FilePath        (takeDirectory)
-import           TBR.Reader
+import           TBR
 import           TBR.Script
-import           TBR.Types
-import           TBR.Writer
 
 class (MonadError T.Text m, MonadIO m, MonadState BookList m) => MonadBooks m
 

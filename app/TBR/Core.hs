@@ -25,10 +25,8 @@ import qualified Data.Set              as Set
 import           Data.Text             (Text)
 import           Data.Text.Lazy        (toStrict)
 import           System.Random         (randomRIO)
+import           TBR
 import           TBR.Monad
-import           TBR.Types
-import           TBR.Util
-import           TBR.Writer
 import           Text.Shakespeare.Text (st)
 
 --------------------------------------------------------------------------------
